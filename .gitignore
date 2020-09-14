@@ -1,0 +1,9 @@
+# temporary files
+*~
+
+# IDE files
+/.vscode
+
+# build results
+/build/
+/builddir/
