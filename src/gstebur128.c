@@ -18,6 +18,8 @@
 #endif
 
 #include <gst/gst.h>
+#include <gst/audio/audio.h>
+#include <gst/audio/gstaudiofilter.h>
 
 #include "gstebur128.h"
 
@@ -41,16 +43,20 @@ enum
  *
  * describe the real formats here.
  */
+
+#define SUPPORTED_CAPS_STRING \
+    GST_AUDIO_CAPS_MAKE("{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(F32) ", " GST_AUDIO_NE(F64) " }")
+
 static GstStaticPadTemplate sink_factory = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
+    GST_STATIC_CAPS (SUPPORTED_CAPS_STRING)
     );
 
 static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY")
+    GST_STATIC_CAPS (SUPPORTED_CAPS_STRING)
     );
 
 #define gst_ebur128_parent_class parent_class
