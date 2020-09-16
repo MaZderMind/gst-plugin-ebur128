@@ -1,17 +1,15 @@
 #ifndef __GST_EBUR128_H__
 #define __GST_EBUR128_H__
 
-#include <gst/gst.h>
 #include <ebur128.h>
+#include <gst/gst.h>
 
 G_BEGIN_DECLS
 
 #define GST_TYPE_EBUR128 (gst_ebur128_get_type())
-G_DECLARE_FINAL_TYPE (Gstebur128, gst_ebur128,
-    GST, EBUR128, GstElement)
+G_DECLARE_FINAL_TYPE(Gstebur128, gst_ebur128, GST, EBUR128, GstElement)
 
-struct _Gstebur128
-{
+struct _Gstebur128 {
   GstElement element;
 
   GstPad *sinkpad, *srcpad;

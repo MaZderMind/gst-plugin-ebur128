@@ -4,6 +4,9 @@ build: builddir
 builddir:
 	meson builddir
 
+format:
+	clang-format -i src/**
+
 inspect:
 	gst-inspect-1.0 builddir/libgstebur128.so
 
@@ -27,4 +30,4 @@ run-ebur128display:
 
 
 
-.PHONY: build inspect inspect-ebur128 run-ebur128
+.PHONY: build inspect inspect-ebur128 run-ebur128 format
