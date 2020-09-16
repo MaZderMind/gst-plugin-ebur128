@@ -200,14 +200,39 @@ static void gst_ebur128_init(Gstebur128 *filter) {
 static void gst_ebur128_finalize(GObject *object) {
   Gstebur128 *filter = GST_EBUR128(object);
 
-  /* free caps */
   if (filter->caps != NULL) {
     gst_caps_unref(filter->caps);
+  }
+
+  if (filter->state != NULL) {
+
+    GST_LOG_OBJECT(filter, "Destroying libebur128 State");
+    ebur128_destroy(&filter->state);
   }
 }
 
 static void
 gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) { /* FIXME */
+}
+
+static int gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
+  int mode = 0;
+
+  if (filter->momentary)
+    mode |= EBUR128_MODE_M;
+  if (filter->shortterm)
+    mode |= EBUR128_MODE_S;
+  if (filter->global)
+    mode |= EBUR128_MODE_I;
+  if (filter->range)
+    mode |= EBUR128_MODE_LRA;
+
+  if (filter->sample_peak)
+    mode |= EBUR128_MODE_SAMPLE_PEAK;
+  if (filter->true_peak)
+    mode |= EBUR128_MODE_TRUE_PEAK;
+
+  return mode;
 }
 
 static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
@@ -217,12 +242,18 @@ static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
   gst_structure_get_int(caps_struct, "rate", &rate);
   gst_structure_get_int(caps_struct, "channels", &channels);
 
-  const gchar *format = gst_structure_get_string(caps_struct, "format");
+  int mode = gst_ebur128_calculate_libebur128_mode(filter);
+  filter->state = ebur128_init(channels, rate, mode);
+  if (filter->window > 0) {
+    ebur128_set_max_window(filter->state, filter->window);
+  }
+  ebur128_set_max_history(filter->state, filter->max_history);
 
-  GST_LOG_OBJECT(filter,
-                 "Configuring libebur128: "
-                 "rate=%d channels=%d format=%s",
-                 rate, channels, format);
+  GST_LOG_OBJECT(
+      filter,
+      "Configuring libebur128: "
+      "rate=%d channels=%d mode=0x%x max_window=%lu, max_history=%lu",
+      rate, channels, mode, filter->window, filter->max_history);
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
