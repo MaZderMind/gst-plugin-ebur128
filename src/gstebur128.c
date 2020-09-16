@@ -150,6 +150,21 @@ static void gst_ebur128_get_property(GObject *object, guint prop_id,
   }
 }
 
+static void gst_ebur128_init_libebur128(Gstebur128 *filter, GstCaps *caps) {
+  gint rate, channels;
+
+  GstStructure *caps_struct = gst_caps_get_structure(caps, 0);
+  gst_structure_get_int(caps_struct, "rate", &rate);
+  gst_structure_get_int(caps_struct, "channels", &channels);
+
+  const gchar *format = gst_structure_get_string(caps_struct, "format");
+
+  GST_LOG_OBJECT(filter,
+                 "Configuring libebur128: "
+                 "rate=%d channels=%d format=%s",
+                 rate, channels, format);
+}
+
 /* GstElement vmethod implementations */
 
 /* this function handles sink events */
@@ -168,7 +183,7 @@ static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
     GstCaps *caps;
 
     gst_event_parse_caps(event, &caps);
-    /* do something with the caps */
+    gst_ebur128_init_libebur128(filter, caps);
 
     /* and forward */
     ret = gst_pad_event_default(pad, parent, event);
