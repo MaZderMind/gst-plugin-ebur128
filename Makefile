@@ -4,6 +4,9 @@ build: builddir
 builddir:
 	meson builddir
 
+clean:
+	ninja -C builddir clean
+
 format:
 	clang-format -i src/**
 

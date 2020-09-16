@@ -30,7 +30,17 @@ GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
 /* Filter signals and args */
 enum { LAST_SIGNAL };
 
-enum { PROP_0, PROP_SILENT };
+enum {
+  PROP_0,
+  PROP_MOMENTARY,
+  PROP_SHORTTERM,
+  PROP_GLOBAL,
+  PROP_WINDOW,
+  PROP_RANGE,
+  PROP_SAMPLE_PEAK,
+  PROP_TRUE_PEAK,
+  PROP_MAX_HISTORY
+};
 
 /* the capabilities of the inputs and outputs.
  *
@@ -63,7 +73,7 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
                                      const GValue *value, GParamSpec *pspec);
 static void gst_ebur128_get_property(GObject *object, guint prop_id,
                                      GValue *value, GParamSpec *pspec);
-
+static void gst_ebur128_finalize(GObject *object);
 static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
                                        GstEvent *event);
 static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
@@ -81,11 +91,69 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
 
   gobject_class->set_property = gst_ebur128_set_property;
   gobject_class->get_property = gst_ebur128_get_property;
+  gobject_class->finalize = gst_ebur128_finalize;
 
   g_object_class_install_property(
-      gobject_class, PROP_SILENT,
-      g_param_spec_boolean("silent", "Silent", "Produce verbose output ?",
-                           FALSE, G_PARAM_READWRITE));
+      gobject_class, PROP_MOMENTARY,
+      g_param_spec_boolean("momentary", "Momentary Loudness Metering",
+                           "Enable Momentary Loudness Metering",
+                           /* default */ TRUE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SHORTTERM,
+      g_param_spec_boolean("shortterm", "Shortterm Loudness Metering",
+                           "Enable Shortterm Loudness Metering",
+                           /* default */ FALSE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_GLOBAL,
+      g_param_spec_boolean("global", "Global Loudness Metering",
+                           "Enable Global Loudness Loudness Metering",
+                           /* default */ FALSE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_WINDOW,
+      g_param_spec_ulong("window", "Window Loudness Metering",
+                         "Enable Window Loudness Metering by setting a "
+                         "non-zero Window-Size in ms",
+                         /* min */ 0,
+                         /* max */ ULONG_MAX,
+                         /* default */ 0,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_RANGE,
+      g_param_spec_boolean(
+          "range", "Loudness Range Metering", "Enable Loudness Range Metering",
+          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SAMPLE_PEAK,
+      g_param_spec_boolean(
+          "sample-peak", "Sample-Peak Metering", "Enable Sample-Peak Metering",
+          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_TRUE_PEAK,
+      g_param_spec_boolean(
+          "true-peak", "True-Peak Metering", "Enable True-Peak Metering",
+          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_MAX_HISTORY,
+      g_param_spec_ulong(
+          "max-history", "Maximum History Size",
+          "Set the maximum history that will be stored for loudness "
+          "integration. More history provides more accurate results, "
+          "but requires more resources. "
+          "Applies to Range Metering and Global Loudness Metering. "
+          "Default is ULONG_MAX (at least ~50 days).",
+          /* min */ 0,
+          /* max */ ULONG_MAX,
+          /* default */ ULONG_MAX, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_set_details_simple(
       gstelement_class, "ebur128", "Filter/Analyzer/Audio",
@@ -119,41 +187,33 @@ static void gst_ebur128_init(Gstebur128 *filter) {
   gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad);
 
   // init properties
-  filter->silent = FALSE;
+  filter->momentary = TRUE;
+  filter->shortterm = FALSE;
+  filter->global = FALSE;
+  filter->window = 0;
+  filter->range = FALSE;
+  filter->sample_peak = FALSE;
+  filter->true_peak = FALSE;
+  filter->max_history = ULONG_MAX;
 }
 
-static void gst_ebur128_set_property(GObject *object, guint prop_id,
-                                     const GValue *value, GParamSpec *pspec) {
+static void gst_ebur128_finalize(GObject *object) {
   Gstebur128 *filter = GST_EBUR128(object);
 
-  switch (prop_id) {
-  case PROP_SILENT:
-    filter->silent = g_value_get_boolean(value);
-    break;
-  default:
-    G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
-    break;
+  /* free caps */
+  if (filter->caps != NULL) {
+    gst_caps_unref(filter->caps);
   }
 }
 
-static void gst_ebur128_get_property(GObject *object, guint prop_id,
-                                     GValue *value, GParamSpec *pspec) {
-  Gstebur128 *filter = GST_EBUR128(object);
-
-  switch (prop_id) {
-  case PROP_SILENT:
-    g_value_set_boolean(value, filter->silent);
-    break;
-  default:
-    G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
-    break;
-  }
+static void
+gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) { /* FIXME */
 }
 
-static void gst_ebur128_init_libebur128(Gstebur128 *filter, GstCaps *caps) {
+static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
   gint rate, channels;
 
-  GstStructure *caps_struct = gst_caps_get_structure(caps, 0);
+  GstStructure *caps_struct = gst_caps_get_structure(filter->caps, 0);
   gst_structure_get_int(caps_struct, "rate", &rate);
   gst_structure_get_int(caps_struct, "channels", &channels);
 
@@ -163,6 +223,78 @@ static void gst_ebur128_init_libebur128(Gstebur128 *filter, GstCaps *caps) {
                  "Configuring libebur128: "
                  "rate=%d channels=%d format=%s",
                  rate, channels, format);
+}
+
+static void gst_ebur128_set_property(GObject *object, guint prop_id,
+                                     const GValue *value, GParamSpec *pspec) {
+  Gstebur128 *filter = GST_EBUR128(object);
+
+  switch (prop_id) {
+  case PROP_MOMENTARY:
+    filter->momentary = g_value_get_boolean(value);
+    break;
+  case PROP_SHORTTERM:
+    filter->shortterm = g_value_get_boolean(value);
+    break;
+  case PROP_GLOBAL:
+    filter->global = g_value_get_boolean(value);
+    break;
+  case PROP_WINDOW:
+    filter->window = g_value_get_ulong(value);
+    break;
+  case PROP_RANGE:
+    filter->range = g_value_get_boolean(value);
+    break;
+  case PROP_SAMPLE_PEAK:
+    filter->sample_peak = g_value_get_boolean(value);
+    break;
+  case PROP_TRUE_PEAK:
+    filter->sample_peak = g_value_get_boolean(value);
+    break;
+  case PROP_MAX_HISTORY:
+    filter->max_history = g_value_get_ulong(value);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
+    break;
+  }
+
+  gst_ebur128_reinit_libebur128_if_mode_changed(filter);
+}
+
+static void gst_ebur128_get_property(GObject *object, guint prop_id,
+                                     GValue *value, GParamSpec *pspec) {
+  Gstebur128 *filter = GST_EBUR128(object);
+
+  switch (prop_id) {
+  case PROP_MOMENTARY:
+    g_value_set_boolean(value, filter->momentary);
+    break;
+  case PROP_SHORTTERM:
+    g_value_set_boolean(value, filter->shortterm);
+    break;
+  case PROP_GLOBAL:
+    g_value_set_boolean(value, filter->global);
+    break;
+  case PROP_WINDOW:
+    g_value_set_ulong(value, filter->window);
+    break;
+  case PROP_RANGE:
+    g_value_set_boolean(value, filter->range);
+    break;
+  case PROP_SAMPLE_PEAK:
+    g_value_set_boolean(value, filter->sample_peak);
+    break;
+  case PROP_TRUE_PEAK:
+    g_value_set_boolean(value, filter->true_peak);
+    break;
+  case PROP_MAX_HISTORY:
+    g_value_set_ulong(value, filter->max_history);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
+    break;
+  }
 }
 
 /* GstElement vmethod implementations */
@@ -180,12 +312,20 @@ static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
 
   switch (GST_EVENT_TYPE(event)) {
   case GST_EVENT_CAPS: {
+    /* parse caps */
     GstCaps *caps;
-
     gst_event_parse_caps(event, &caps);
-    gst_ebur128_init_libebur128(filter, caps);
 
-    /* and forward */
+    /* store caps */
+    if (filter->caps != NULL) {
+      gst_caps_unref(filter->caps);
+    }
+    filter->caps = gst_caps_ref(caps);
+
+    /* init libebur128 */
+    gst_ebur128_init_libebur128(filter);
+
+    /* forward event */
     ret = gst_pad_event_default(pad, parent, event);
     break;
   }
@@ -204,10 +344,10 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
   Gstebur128 *filter;
 
   filter = GST_EBUR128(parent);
-
-  if (filter->silent == FALSE)
-    g_print("I'm plugged, therefore I'm in.\n");
-
+  /*
+    if (filter->silent == FALSE)
+      g_print("I'm plugged, therefore I'm in.\n");
+  */
   /* just push out the incoming buffer without touching it */
   return gst_pad_push(filter->srcpad, buf);
 }

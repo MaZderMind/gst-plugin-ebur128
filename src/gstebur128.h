@@ -14,9 +14,17 @@ struct _Gstebur128 {
 
   GstPad *sinkpad, *srcpad;
 
-  gboolean silent;
+  gboolean momentary;
+  gboolean shortterm;
+  gboolean global;
+  gulong window;
+  gboolean range;
+  gboolean sample_peak;
+  gboolean true_peak;
+  gulong max_history;
 
   ebur128_state *state;
+  GstCaps *caps;
 };
 
 G_END_DECLS
