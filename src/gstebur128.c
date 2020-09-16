@@ -28,10 +28,7 @@ GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
 #define GST_CAT_DEFAULT gst_ebur128_debug
 
 /* Filter signals and args */
-enum {
-  /* FILL ME */
-  LAST_SIGNAL
-};
+enum { LAST_SIGNAL };
 
 enum { PROP_0, PROP_SILENT };
 
