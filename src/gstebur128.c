@@ -109,10 +109,10 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
 
   g_object_class_install_property(
       gobject_class, PROP_GLOBAL,
-      g_param_spec_boolean("global", "Global Loudness Metering",
-                           "Enable Global Loudness Loudness Metering",
-                           /* default */ FALSE,
-                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_boolean(
+          "global", "Integrated (Global) Loudness Metering",
+          "Enable Integrated (Global) Loudness Loudness Metering",
+          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_WINDOW,
