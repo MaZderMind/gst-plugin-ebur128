@@ -212,7 +212,7 @@ gst_ebur128_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
  * register the element factories and other features
  */
 static gboolean
-ebur128_init (GstPlugin * ebur128)
+ebur128_plugin_init (GstPlugin * ebur128)
 {
   /* debug category for fltering log messages
    */
@@ -240,7 +240,7 @@ GST_PLUGIN_DEFINE (
     ebur128,
     "The EBU-R 128 Plugin ('ebur128') provides Elements for calculating the EBU-R 128 Loudness of an Audio-Stream and "
     "to generate a Video-Stream visualizing the Loudness over Time",
-    ebur128_init,
+    ebur128_plugin_init,
     PACKAGE_VERSION,
     GST_LICENSE,
     GST_PACKAGE_NAME,

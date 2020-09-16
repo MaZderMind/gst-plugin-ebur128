@@ -2,6 +2,7 @@
 #define __GST_EBUR128_H__
 
 #include <gst/gst.h>
+#include <ebur128.h>
 
 G_BEGIN_DECLS
 
@@ -16,6 +17,8 @@ struct _Gstebur128
   GstPad *sinkpad, *srcpad;
 
   gboolean silent;
+
+  ebur128_state ebur128;
 };
 
 G_END_DECLS
