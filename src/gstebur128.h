@@ -16,7 +16,7 @@ struct _Gstebur128 {
 
   gboolean silent;
 
-  ebur128_state ebur128;
+  ebur128_state *state;
 };
 
 G_END_DECLS
