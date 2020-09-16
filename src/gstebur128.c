@@ -375,10 +375,51 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
   Gstebur128 *filter;
 
   filter = GST_EBUR128(parent);
-  /*
-    if (filter->silent == FALSE)
-      g_print("I'm plugged, therefore I'm in.\n");
-  */
+
+  GstMapInfo map_info;
+  gst_buffer_map(buf, &map_info, GST_MAP_READ);
+
+  GstStructure *caps_struct = gst_caps_get_structure(filter->caps, 0);
+  const gchar *format = gst_structure_get_string(caps_struct, "format");
+  if (g_str_equal(format, GST_AUDIO_NE(S16))) {
+    const long frame_size = 2;
+    const long num_samples = map_info.size / frame_size;
+
+    GST_DEBUG_OBJECT(filter,
+                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
+                     "bytes to libebur128",
+                     map_info.size, num_samples, format, frame_size);
+
+    ebur128_add_frames_int(filter->state, (const int *)map_info.data,
+                           num_samples);
+  } else if (g_str_equal(format, GST_AUDIO_NE(F32))) {
+    const long frame_size = 4;
+    const long num_samples = map_info.size / frame_size;
+
+    GST_DEBUG_OBJECT(filter,
+                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
+                     "bytes to libebur128",
+                     map_info.size, num_samples, format, frame_size);
+
+    ebur128_add_frames_float(filter->state, (const float *)map_info.data,
+                             num_samples);
+  } else if (g_str_equal(format, GST_AUDIO_NE(F64))) {
+    const long frame_size = 8;
+    const long num_samples = map_info.size / frame_size;
+
+    GST_DEBUG_OBJECT(filter,
+                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
+                     "bytes to libebur128",
+                     map_info.size, num_samples, format, frame_size);
+
+    ebur128_add_frames_double(filter->state, (const double *)map_info.data,
+                              num_samples);
+  } else {
+    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s", format);
+  }
+
+  gst_buffer_unmap(buf, &map_info);
+
   /* just push out the incoming buffer without touching it */
   return gst_pad_push(filter->srcpad, buf);
 }
