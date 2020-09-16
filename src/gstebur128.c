@@ -37,9 +37,17 @@ enum { PROP_0, PROP_SILENT };
  * describe the real formats here.
  */
 
+#define SUPPORTED_AUDIO_FORMATS                                                \
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(F32) ", " GST_AUDIO_NE(F64) " }"
+
+#define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
+
 #define SUPPORTED_CAPS_STRING                                                  \
-  GST_AUDIO_CAPS_MAKE("{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(                \
-      F32) ", " GST_AUDIO_NE(F64) " }")
+  "audio/x-raw, "                                                              \
+  "format = (string) " SUPPORTED_AUDIO_FORMATS ", "                            \
+  "rate = " GST_AUDIO_RATE_RANGE ", "                                          \
+  "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
+  "layout = (string)interleaved "
 
 static GstStaticPadTemplate sink_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
