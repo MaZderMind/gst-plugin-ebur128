@@ -24,6 +24,17 @@ run-ebur128:
       audio/x-raw,format=S16LE,channels=2,rate=48000 ! \
       ebur128 ! autoaudiosink
 
+run-ebur128-with-seek:
+	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:9 gst-launch-1.0 -m \
+		filesrc location=music.mp3 ! \
+		mpegaudioparse ! mpg123audiodec ! \
+		ebur128 ! \
+		navseek ! \
+		tee name=t \
+		\
+		t. ! queue ! audioconvert ! wavescope ! ximagesink \
+		t. ! queue ! autoaudiosink
+
 run-ebur128display:
 	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:9 gst-launch-1.0 audiotestsrc ! \
 	  audio/x-raw,format=S16LE,channels=2,rate=48000 ! \
