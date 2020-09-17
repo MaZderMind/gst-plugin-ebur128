@@ -278,6 +278,11 @@ static void gst_ebur128_destroy_libebur128(Gstebur128 *filter) {
 }
 
 static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) {
+  if (!filter->state) {
+    // libebur128 not initialized yet
+    return;
+  }
+
   gint new_mode = gst_ebur128_calculate_libebur128_mode(filter);
   gint current_mode = filter->state->mode;
   if (current_mode != new_mode) {
