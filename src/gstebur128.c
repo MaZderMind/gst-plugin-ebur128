@@ -195,17 +195,14 @@ static void gst_ebur128_init(Gstebur128 *filter) {
   filter->sample_peak = FALSE;
   filter->true_peak = FALSE;
   filter->max_history = ULONG_MAX;
+
+  gst_audio_info_init(&filter->audio_info);
 }
 
 static void gst_ebur128_finalize(GObject *object) {
   Gstebur128 *filter = GST_EBUR128(object);
 
-  if (filter->caps != NULL) {
-    gst_caps_unref(filter->caps);
-  }
-
   if (filter->state != NULL) {
-
     GST_LOG_OBJECT(filter, "Destroying libebur128 State");
     ebur128_destroy(&filter->state);
   }
@@ -215,8 +212,8 @@ static void
 gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) { /* FIXME */
 }
 
-static int gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
-  int mode = 0;
+static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
+  gint mode = 0;
 
   if (filter->momentary)
     mode |= EBUR128_MODE_M;
@@ -236,13 +233,10 @@ static int gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
 }
 
 static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
-  gint rate, channels;
+  gint rate = GST_AUDIO_INFO_RATE(&filter->audio_info);
+  gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
+  gint mode = gst_ebur128_calculate_libebur128_mode(filter);
 
-  GstStructure *caps_struct = gst_caps_get_structure(filter->caps, 0);
-  gst_structure_get_int(caps_struct, "rate", &rate);
-  gst_structure_get_int(caps_struct, "channels", &channels);
-
-  int mode = gst_ebur128_calculate_libebur128_mode(filter);
   filter->state = ebur128_init(channels, rate, mode);
   if (filter->window > 0) {
     ebur128_set_max_window(filter->state, filter->window);
@@ -347,11 +341,10 @@ static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
     GstCaps *caps;
     gst_event_parse_caps(event, &caps);
 
-    /* store caps */
-    if (filter->caps != NULL) {
-      gst_caps_unref(filter->caps);
+    /* store audio-info */
+    if (!gst_audio_info_from_caps(&filter->audio_info, caps)) {
+      GST_ERROR_OBJECT(filter, "Unhandled Caps: %" GST_PTR_FORMAT, caps);
     }
-    filter->caps = gst_caps_ref(caps);
 
     /* init libebur128 */
     gst_ebur128_init_libebur128(filter);
@@ -379,48 +372,41 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
   GstMapInfo map_info;
   gst_buffer_map(buf, &map_info, GST_MAP_READ);
 
-  GstStructure *caps_struct = gst_caps_get_structure(filter->caps, 0);
-  const gchar *format = gst_structure_get_string(caps_struct, "format");
-  if (g_str_equal(format, GST_AUDIO_NE(S16))) {
-    const long frame_size = 2;
-    const long num_samples = map_info.size / frame_size;
+  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&filter->audio_info);
+  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&filter->audio_info);
+  const gint num_frames = map_info.size / bytes_per_frame;
 
-    GST_DEBUG_OBJECT(filter,
-                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
-                     "bytes to libebur128",
-                     map_info.size, num_samples, format, frame_size);
+  GST_DEBUG_OBJECT(filter,
+                   "Got %s Buffer of %lu bytes. Adding %u frames of %u bytes "
+                   "in %u channels to libebur128",
+                   GST_AUDIO_INFO_NAME(&filter->audio_info), map_info.size,
+                   num_frames, bytes_per_frame,
+                   GST_AUDIO_INFO_CHANNELS(&filter->audio_info));
 
+  switch (format) {
+  case GST_AUDIO_FORMAT_S16LE:
+  case GST_AUDIO_FORMAT_S16BE:
     ebur128_add_frames_int(filter->state, (const int *)map_info.data,
-                           num_samples);
-  } else if (g_str_equal(format, GST_AUDIO_NE(F32))) {
-    const long frame_size = 4;
-    const long num_samples = map_info.size / frame_size;
-
-    GST_DEBUG_OBJECT(filter,
-                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
-                     "bytes to libebur128",
-                     map_info.size, num_samples, format, frame_size);
-
+                           num_frames);
+    break;
+  case GST_AUDIO_FORMAT_F32LE:
+  case GST_AUDIO_FORMAT_F32BE:
     ebur128_add_frames_float(filter->state, (const float *)map_info.data,
-                             num_samples);
-  } else if (g_str_equal(format, GST_AUDIO_NE(F64))) {
-    const long frame_size = 8;
-    const long num_samples = map_info.size / frame_size;
-
-    GST_DEBUG_OBJECT(filter,
-                     "Got Buffer of %lu bytes. Adding %lu %s samples of %lu "
-                     "bytes to libebur128",
-                     map_info.size, num_samples, format, frame_size);
-
+                             num_frames);
+    break;
+  case GST_AUDIO_FORMAT_F64LE:
+  case GST_AUDIO_FORMAT_F64BE:
     ebur128_add_frames_double(filter->state, (const double *)map_info.data,
-                              num_samples);
-  } else {
-    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s", format);
+                              num_frames);
+    break;
+  default:
+    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",
+                     GST_AUDIO_INFO_NAME(&filter->audio_info));
   }
 
   gst_buffer_unmap(buf, &map_info);
 
-  /* just push out the incoming buffer without touching it */
+  /* push out the incoming buffer without touching it */
   return gst_pad_push(filter->srcpad, buf);
 }
 

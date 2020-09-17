@@ -24,7 +24,7 @@ struct _Gstebur128 {
   gulong max_history;
 
   ebur128_state *state;
-  GstCaps *caps;
+  GstAudioInfo audio_info;
 };
 
 G_END_DECLS
