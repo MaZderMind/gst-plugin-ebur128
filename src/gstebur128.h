@@ -16,6 +16,8 @@ struct _Gstebur128 {
 
   gboolean post_messages;
   guint64 interval;
+  guint interval_frames;
+  guint frames_processed;
 
   gboolean momentary;
   gboolean shortterm;
