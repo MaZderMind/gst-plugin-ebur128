@@ -39,8 +39,12 @@ enum {
   PROP_RANGE,
   PROP_SAMPLE_PEAK,
   PROP_TRUE_PEAK,
-  PROP_MAX_HISTORY
+  PROP_MAX_HISTORY,
+  PROP_POST_MESSAGES,
+  PROP_INTERVAL
 };
+
+#define PROP_INTERVAL_DEFAULT (GST_SECOND / 10)
 
 /* the capabilities of the inputs and outputs.
  *
@@ -155,10 +159,26 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
           /* max */ ULONG_MAX,
           /* default */ ULONG_MAX, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
+  g_object_class_install_property(
+      gobject_class, PROP_POST_MESSAGES,
+      g_param_spec_boolean(
+          "post-messages", "Post Messages",
+          "Whether to post a 'loudness' element message on the bus for each "
+          "passed interval",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_INTERVAL,
+      g_param_spec_uint64(
+          "interval", "Interval",
+          "Interval of time between message posts (in nanoseconds)", 1,
+          G_MAXUINT64, PROP_INTERVAL_DEFAULT,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_element_class_set_details_simple(
       gstelement_class, "ebur128", "Filter/Analyzer/Audio",
-      "Calculates the EBU-R 128 Loudness of an Audio-Stream and emits them as "
-      "Message",
+      "Calculates the EBU-R 128 Loudness of an Audio-Stream and "
+      "emits them as Message",
       "Peter Körner <peter@mazdermind.de>");
 
   gst_element_class_add_pad_template(gstelement_class,
@@ -195,6 +215,8 @@ static void gst_ebur128_init(Gstebur128 *filter) {
   filter->sample_peak = FALSE;
   filter->true_peak = FALSE;
   filter->max_history = ULONG_MAX;
+  filter->post_messages = TRUE;
+  filter->interval = PROP_INTERVAL_DEFAULT;
 
   gst_audio_info_init(&filter->audio_info);
 }
@@ -279,6 +301,12 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
   case PROP_MAX_HISTORY:
     filter->max_history = g_value_get_ulong(value);
     break;
+  case PROP_POST_MESSAGES:
+    filter->post_messages = g_value_get_boolean(value);
+    break;
+  case PROP_INTERVAL:
+    filter->interval = g_value_get_uint64(value);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -315,6 +343,12 @@ static void gst_ebur128_get_property(GObject *object, guint prop_id,
     break;
   case PROP_MAX_HISTORY:
     g_value_set_ulong(value, filter->max_history);
+    break;
+  case PROP_POST_MESSAGES:
+    g_value_set_boolean(value, filter->post_messages);
+    break;
+  case PROP_INTERVAL:
+    g_value_set_uint64(value, filter->interval);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
