@@ -15,9 +15,11 @@ struct _Gstebur128 {
   GstPad *sinkpad, *srcpad;
 
   gboolean post_messages;
-  guint64 interval;
+  GstClockTime message_ts;
+
+  GstClockTime interval;
   guint interval_frames;
-  guint frames_processed;
+  guint frames_processed_in_interval;
 
   gboolean momentary;
   gboolean shortterm;

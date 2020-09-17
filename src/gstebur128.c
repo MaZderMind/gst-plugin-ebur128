@@ -90,8 +90,9 @@ static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter);
 static void gst_ebur128_destroy_libebur128(Gstebur128 *filter);
 static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter);
 static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
-                                                      gint frames_processed);
-static void gst_ebur128_emit_message(Gstebur128 *filter);
+                                                      gint frames_processed,
+                                                      GstBuffer *buf);
+static void gst_ebur128_post_message(Gstebur128 *filter);
 
 /* GObject vmethod implementations */
 
@@ -228,6 +229,8 @@ static void gst_ebur128_init(Gstebur128 *filter) {
   filter->post_messages = TRUE;
   filter->interval = PROP_INTERVAL_DEFAULT;
 
+  filter->message_ts = GST_CLOCK_TIME_NONE;
+
   gst_audio_info_init(&filter->audio_info);
 }
 
@@ -327,26 +330,44 @@ static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter) {
 }
 
 static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
-                                                      gint frames_processed) {
-  filter->frames_processed += frames_processed;
-  if (filter->frames_processed > filter->interval_frames) {
+                                                      gint frames_processed,
+                                                      GstBuffer *buf) {
+  /* Handle Timestamping and Messaging */
+  if (GST_BUFFER_FLAG_IS_SET(buf, GST_BUFFER_FLAG_DISCONT)) {
+    filter->message_ts = GST_BUFFER_TIMESTAMP(buf);
+  }
+  if (G_UNLIKELY(!GST_CLOCK_TIME_IS_VALID(filter->message_ts))) {
+    filter->message_ts = GST_BUFFER_TIMESTAMP(buf);
+  }
+
+  filter->frames_processed_in_interval += frames_processed;
+
+  guint sample_rate = GST_AUDIO_INFO_RATE(&filter->audio_info);
+  GstClockTime duration =
+      GST_FRAMES_TO_CLOCK_TIME(frames_processed, sample_rate);
+  filter->message_ts += duration;
+
+  if (filter->frames_processed_in_interval > filter->interval_frames) {
     GST_DEBUG_OBJECT(filter,
                      "processed %u frames which is over the configured "
                      "interval_frames of %u (for interval of %" GST_TIME_FORMAT
                      ")",
-                     filter->frames_processed, filter->interval_frames,
-                     GST_TIME_ARGS(filter->interval));
+                     filter->frames_processed_in_interval,
+                     filter->interval_frames, GST_TIME_ARGS(filter->interval));
 
     if (filter->post_messages) {
-      gst_ebur128_emit_message(filter);
+      gst_ebur128_post_message(filter);
     }
 
-    filter->frames_processed = 0;
+    filter->frames_processed_in_interval = 0;
   }
 }
 
-static void gst_ebur128_emit_message(Gstebur128 *filter) {
-  GST_INFO_OBJECT(filter, "emitting message");
+static void gst_ebur128_post_message(Gstebur128 *filter) {
+  GST_INFO_OBJECT(filter,
+                  "emitting message "
+                  "message_ts=%" GST_TIME_FORMAT " ",
+                  GST_TIME_ARGS(filter->message_ts));
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -523,9 +544,9 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
                      GST_AUDIO_INFO_NAME(&filter->audio_info));
   }
 
-  gst_ebur128_count_frames_and_emit_message(filter, num_frames);
-
   gst_buffer_unmap(buf, &map_info);
+
+  gst_ebur128_count_frames_and_emit_message(filter, num_frames, buf);
 
   /* push out the incoming buffer without touching it */
   return gst_pad_push(filter->srcpad, buf);
