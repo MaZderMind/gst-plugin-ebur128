@@ -73,6 +73,7 @@ static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
 #define gst_ebur128_parent_class parent_class
 G_DEFINE_TYPE(Gstebur128, gst_ebur128, GST_TYPE_ELEMENT);
 
+/* forward declarations */
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
                                      const GValue *value, GParamSpec *pspec);
 static void gst_ebur128_get_property(GObject *object, guint prop_id,
@@ -82,6 +83,11 @@ static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
                                        GstEvent *event);
 static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
                                        GstBuffer *buf);
+
+static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter);
+static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter);
+static void gst_ebur128_init_libebur128(Gstebur128 *filter);
+static void gst_ebur128_destroy_libebur128(Gstebur128 *filter);
 
 /* GObject vmethod implementations */
 
@@ -223,15 +229,7 @@ static void gst_ebur128_init(Gstebur128 *filter) {
 
 static void gst_ebur128_finalize(GObject *object) {
   Gstebur128 *filter = GST_EBUR128(object);
-
-  if (filter->state != NULL) {
-    GST_LOG_OBJECT(filter, "Destroying libebur128 State");
-    ebur128_destroy(&filter->state);
-  }
-}
-
-static void
-gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) { /* FIXME */
+  gst_ebur128_destroy_libebur128(filter);
 }
 
 static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
@@ -267,9 +265,29 @@ static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
 
   GST_LOG_OBJECT(
       filter,
-      "Configuring libebur128: "
+      "Initializing libebur128: "
       "rate=%d channels=%d mode=0x%x max_window=%lu, max_history=%lu",
       rate, channels, mode, filter->window, filter->max_history);
+}
+
+static void gst_ebur128_destroy_libebur128(Gstebur128 *filter) {
+  if (filter->state != NULL) {
+    GST_LOG_OBJECT(filter, "Destroying libebur128 State");
+    ebur128_destroy(&filter->state);
+  }
+}
+
+static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) {
+  gint new_mode = gst_ebur128_calculate_libebur128_mode(filter);
+  gint current_mode = filter->state->mode;
+  if (current_mode != new_mode) {
+    GST_LOG_OBJECT(filter,
+                   "libebur128 Mode has changed from %u to %u, Destroying and "
+                   "Re-Initializing libebur128 state",
+                   current_mode, new_mode);
+    gst_ebur128_destroy_libebur128(filter);
+    gst_ebur128_init_libebur128(filter);
+  }
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
