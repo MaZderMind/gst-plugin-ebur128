@@ -52,7 +52,8 @@ enum {
  */
 
 #define SUPPORTED_AUDIO_FORMATS                                                \
-  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(F32) ", " GST_AUDIO_NE(F64) " }"
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S24) "," GST_AUDIO_NE(              \
+      F32) ", " GST_AUDIO_NE(F64) " }"
 
 #define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
 
@@ -526,6 +527,11 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
   switch (format) {
   case GST_AUDIO_FORMAT_S16LE:
   case GST_AUDIO_FORMAT_S16BE:
+    ebur128_add_frames_short(filter->state, (const short *)map_info.data,
+                             num_frames);
+    break;
+  case GST_AUDIO_FORMAT_S24LE:
+  case GST_AUDIO_FORMAT_S24BE:
     ebur128_add_frames_int(filter->state, (const int *)map_info.data,
                            num_frames);
     break;
