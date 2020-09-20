@@ -114,6 +114,11 @@ static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
 static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
                                                 const char *invocation,
                                                 const int return_value);
+
+static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
+                                       GstAudioFormat format, guint8 *data,
+                                       gint num_frames);
+
 /* GObject vmethod implementations */
 
 /* initialize the ebur128's class */
@@ -673,40 +678,8 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                    num_frames, bytes_per_frame,
                    GST_AUDIO_INFO_CHANNELS(&filter->audio_info));
 
-  int ret = 0;
-  gboolean success = TRUE;
-
-  switch (format) {
-  case GST_AUDIO_FORMAT_S16LE:
-  case GST_AUDIO_FORMAT_S16BE:
-    ret = ebur128_add_frames_short(filter->state, (const short *)map_info.data,
-                                   num_frames);
-    break;
-  case GST_AUDIO_FORMAT_S24LE:
-  case GST_AUDIO_FORMAT_S24BE:
-    ret = ebur128_add_frames_int(filter->state, (const int *)map_info.data,
-                                 num_frames);
-    break;
-  case GST_AUDIO_FORMAT_F32LE:
-  case GST_AUDIO_FORMAT_F32BE:
-    ret = ebur128_add_frames_float(filter->state, (const float *)map_info.data,
-                                   num_frames);
-    break;
-  case GST_AUDIO_FORMAT_F64LE:
-  case GST_AUDIO_FORMAT_F64BE:
-    ret = ebur128_add_frames_double(filter->state,
-                                    (const double *)map_info.data, num_frames);
-    break;
-  default:
-    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",
-                     GST_AUDIO_INFO_NAME(&filter->audio_info));
-    success = FALSE;
-  }
-
-  if (ret != EBUR128_SUCCESS) {
-    GST_ERROR_OBJECT(filter, "Error-Code from libebur128: %d", ret);
-    success = FALSE;
-  }
+  gboolean success =
+      gst_ebur128_add_frames(filter, format, map_info.data, num_frames);
 
   gst_buffer_unmap(buf, &map_info);
 
@@ -716,6 +689,50 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
   }
 
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
+}
+
+static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
+                                       GstAudioFormat format, guint8 *data,
+                                       gint num_frames) {
+  gboolean success = TRUE;
+  int ret;
+
+  switch (format) {
+  case GST_AUDIO_FORMAT_S16LE:
+  case GST_AUDIO_FORMAT_S16BE:
+    ret = ebur128_add_frames_short(filter->state, (const short *)data,
+                                   num_frames);
+    success &= gst_ebur128_validate_lib_return(filter,
+                                               "ebur128_add_frames_short", ret);
+    break;
+  case GST_AUDIO_FORMAT_S24LE:
+  case GST_AUDIO_FORMAT_S24BE:
+    ret = ebur128_add_frames_int(filter->state, (const int *)data, num_frames);
+    success &=
+        gst_ebur128_validate_lib_return(filter, "ebur128_add_frames_int", ret);
+    break;
+  case GST_AUDIO_FORMAT_F32LE:
+  case GST_AUDIO_FORMAT_F32BE:
+    ret = ebur128_add_frames_float(filter->state, (const float *)data,
+                                   num_frames);
+
+    success &= gst_ebur128_validate_lib_return(filter,
+                                               "ebur128_add_frames_float", ret);
+    break;
+  case GST_AUDIO_FORMAT_F64LE:
+  case GST_AUDIO_FORMAT_F64BE:
+    ret = ebur128_add_frames_double(filter->state, (const double *)data,
+                                    num_frames);
+    success &= gst_ebur128_validate_lib_return(
+        filter, "ebur128_add_frames_double", ret);
+    break;
+  default:
+    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",
+                     GST_AUDIO_INFO_NAME(&filter->audio_info));
+    success = FALSE;
+  }
+
+  return success;
 }
 
 /* entry point to initialize the plug-in
