@@ -99,17 +99,21 @@ static void gst_ebur128_init_libebur128(Gstebur128 *filter);
 static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter);
 static void gst_ebur128_destroy_libebur128(Gstebur128 *filter);
 static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter);
-static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
-                                                      gint frames_processed,
-                                                      GstBuffer *buf);
-static void gst_ebur128_post_message(Gstebur128 *filter);
+static gboolean gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
+                                                          gint frames_processed,
+                                                          GstBuffer *buf);
+static gboolean gst_ebur128_post_message(Gstebur128 *filter);
 typedef int (*per_channel_func_t)(ebur128_state *st,
                                   unsigned int channel_number, double *out);
 
-static void gst_ebur128_fill_channel_array(Gstebur128 *filter,
-                                           GValue *array_gvalue,
-                                           per_channel_func_t func);
+static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
+                                               GValue *array_gvalue,
+                                               const char *func_name,
+                                               per_channel_func_t func);
 
+static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
+                                                const char *invocation,
+                                                const int return_value);
 /* GObject vmethod implementations */
 
 /* initialize the ebur128's class */
@@ -341,10 +345,9 @@ static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter) {
                   interval_frames, GST_TIME_ARGS(interval), sample_rate);
 }
 
-static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
-                                                      gint frames_processed,
-                                                      GstBuffer *buf) {
-  /* Handle Timestamping and Messaging */
+static gboolean gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
+                                                          gint frames_processed,
+                                                          GstBuffer *buf) {
   if (GST_BUFFER_FLAG_IS_SET(buf, GST_BUFFER_FLAG_DISCONT)) {
     filter->message_ts = GST_BUFFER_TIMESTAMP(buf);
   }
@@ -359,6 +362,7 @@ static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
       GST_FRAMES_TO_CLOCK_TIME(frames_processed, sample_rate);
   filter->message_ts += duration;
 
+  gboolean success = TRUE;
   if (filter->frames_processed_in_interval > filter->interval_frames) {
     GST_DEBUG_OBJECT(filter,
                      "processed %u frames which is over the configured "
@@ -367,15 +371,17 @@ static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
                      filter->frames_processed_in_interval,
                      filter->interval_frames, GST_TIME_ARGS(filter->interval));
 
-    gst_ebur128_post_message(filter);
+    success = gst_ebur128_post_message(filter);
 
     filter->frames_processed_in_interval = 0;
   }
+
+  return success;
 }
 
-static void gst_ebur128_post_message(Gstebur128 *filter) {
+static gboolean gst_ebur128_post_message(Gstebur128 *filter) {
   if (!filter->post_messages) {
-    return;
+    return TRUE;
   }
 
   GstBaseTransform *trans = GST_BASE_TRANSFORM_CAST(filter);
@@ -391,38 +397,49 @@ static void gst_ebur128_post_message(Gstebur128 *filter) {
                         "stream-time", G_TYPE_UINT64, stream_time,
                         "running-time", G_TYPE_UINT64, running_time, NULL);
 
+  gboolean success = TRUE;
   // momentary loudness (last 400ms) in LUFS.
   if (filter->momentary) {
     double momentary;
-    ebur128_loudness_momentary(filter->state, &momentary);
+    int ret = ebur128_loudness_momentary(filter->state, &momentary);
+    success &= gst_ebur128_validate_lib_return(
+        filter, "ebur128_loudness_momentary", ret);
     gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
   }
 
   // short-term loudness (last 3s) in LUFS.
   if (filter->shortterm) {
     double shortterm;
-    ebur128_loudness_shortterm(filter->state, &shortterm);
+    int ret = ebur128_loudness_shortterm(filter->state, &shortterm);
+    success &= gst_ebur128_validate_lib_return(
+        filter, "ebur128_loudness_shortterm", ret);
     gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
   }
 
   // global integrated loudness in LUFS.
   if (filter->global) {
     double global;
-    ebur128_loudness_global(filter->state, &global);
+    int ret = ebur128_loudness_global(filter->state, &global);
+    success &=
+        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_global", ret);
     gst_structure_set(structure, "global", G_TYPE_DOUBLE, global, NULL);
   }
 
   // loudness of the specified window in LUFS.
   if (filter->window > 0) {
     double window;
-    ebur128_loudness_window(filter->state, filter->window, &window);
+    int ret = ebur128_loudness_window(filter->state, filter->window, &window);
+    success &=
+        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_window", ret);
     gst_structure_set(structure, "window", G_TYPE_DOUBLE, window, NULL);
   }
 
   // loudness range (LRA) of programme in LU.
   if (filter->range) {
     double range;
-    ebur128_loudness_range(filter->state, &range);
+    int ret = ebur128_loudness_range(filter->state, &range);
+    success &=
+        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_range", ret);
     gst_structure_set(structure, "range", G_TYPE_DOUBLE, range, NULL);
   }
 
@@ -432,7 +449,8 @@ static void gst_ebur128_post_message(Gstebur128 *filter) {
     GValue sample_peak = {
         0,
     };
-    gst_ebur128_fill_channel_array(filter, &sample_peak, &ebur128_sample_peak);
+    success &= gst_ebur128_fill_channel_array(
+        filter, &sample_peak, "ebur128_sample_peak", &ebur128_sample_peak);
     gst_structure_take_value(structure, "sample-peak", &sample_peak);
   }
 
@@ -443,20 +461,31 @@ static void gst_ebur128_post_message(Gstebur128 *filter) {
     GValue true_peak = {
         0,
     };
-    gst_ebur128_fill_channel_array(filter, &true_peak, &ebur128_true_peak);
+    success &= gst_ebur128_fill_channel_array(
+        filter, &true_peak, "ebur128_true_peak", &ebur128_true_peak);
     gst_structure_take_value(structure, "true-peak", &true_peak);
   }
 
-  GstMessage *message = gst_message_new_element(GST_OBJECT(filter), structure);
-  gst_element_post_message(GST_ELEMENT(filter), message);
+  if (success) {
+    GstMessage *message =
+        gst_message_new_element(GST_OBJECT(filter), structure);
+    gst_element_post_message(GST_ELEMENT(filter), message);
 
-  GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT,
-                  GST_TIME_ARGS(timestamp));
+    GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT,
+                    GST_TIME_ARGS(timestamp));
+
+  } else {
+    GST_ERROR_OBJECT(
+        filter,
+        "error getting the requested calculation results from libebur128");
+  }
+  return success;
 }
 
-static void gst_ebur128_fill_channel_array(Gstebur128 *filter,
-                                           GValue *array_gvalue,
-                                           per_channel_func_t func) {
+static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
+                                               GValue *array_gvalue,
+                                               const char *func_name,
+                                               per_channel_func_t func) {
   g_value_init(array_gvalue, G_TYPE_VALUE_ARRAY);
   GValueArray *array = g_value_array_new(0);
   g_value_take_boxed(array_gvalue, array);
@@ -469,11 +498,28 @@ static void gst_ebur128_fill_channel_array(Gstebur128 *filter,
 
   gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
 
+  gboolean success = TRUE;
+
   for (gint channel = 0; channel < channels; channel++) {
-    func(filter->state, channel, &double_value);
+    int ret = func(filter->state, channel, &double_value);
+    success &= gst_ebur128_validate_lib_return(filter, func_name, ret);
     g_value_set_double(&double_gvalue, double_value);
     g_value_array_append(array, &double_gvalue);
   }
+
+  return success;
+}
+
+static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
+                                                const char *invocation,
+                                                const int return_value) {
+  if (return_value != EBUR128_SUCCESS) {
+    GST_ERROR_OBJECT(filter, "Error-Code %d from libebur128 call to %s",
+                     return_value, invocation);
+    return FALSE;
+  }
+
+  return TRUE;
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -627,37 +673,49 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                    num_frames, bytes_per_frame,
                    GST_AUDIO_INFO_CHANNELS(&filter->audio_info));
 
+  int ret = 0;
+  gboolean success = TRUE;
+
   switch (format) {
   case GST_AUDIO_FORMAT_S16LE:
   case GST_AUDIO_FORMAT_S16BE:
-    ebur128_add_frames_short(filter->state, (const short *)map_info.data,
-                             num_frames);
+    ret = ebur128_add_frames_short(filter->state, (const short *)map_info.data,
+                                   num_frames);
     break;
   case GST_AUDIO_FORMAT_S24LE:
   case GST_AUDIO_FORMAT_S24BE:
-    ebur128_add_frames_int(filter->state, (const int *)map_info.data,
-                           num_frames);
+    ret = ebur128_add_frames_int(filter->state, (const int *)map_info.data,
+                                 num_frames);
     break;
   case GST_AUDIO_FORMAT_F32LE:
   case GST_AUDIO_FORMAT_F32BE:
-    ebur128_add_frames_float(filter->state, (const float *)map_info.data,
-                             num_frames);
+    ret = ebur128_add_frames_float(filter->state, (const float *)map_info.data,
+                                   num_frames);
     break;
   case GST_AUDIO_FORMAT_F64LE:
   case GST_AUDIO_FORMAT_F64BE:
-    ebur128_add_frames_double(filter->state, (const double *)map_info.data,
-                              num_frames);
+    ret = ebur128_add_frames_double(filter->state,
+                                    (const double *)map_info.data, num_frames);
     break;
   default:
     GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",
                      GST_AUDIO_INFO_NAME(&filter->audio_info));
+    success = FALSE;
+  }
+
+  if (ret != EBUR128_SUCCESS) {
+    GST_ERROR_OBJECT(filter, "Error-Code from libebur128: %d", ret);
+    success = FALSE;
   }
 
   gst_buffer_unmap(buf, &map_info);
 
-  gst_ebur128_count_frames_and_emit_message(filter, num_frames, buf);
+  if (success) {
+    success =
+        gst_ebur128_count_frames_and_emit_message(filter, num_frames, buf);
+  }
 
-  return GST_FLOW_OK;
+  return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
 
 /* entry point to initialize the plug-in
