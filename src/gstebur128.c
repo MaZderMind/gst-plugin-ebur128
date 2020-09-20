@@ -495,7 +495,7 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
     filter->sample_peak = g_value_get_boolean(value);
     break;
   case PROP_TRUE_PEAK:
-    filter->sample_peak = g_value_get_boolean(value);
+    filter->true_peak = g_value_get_boolean(value);
     break;
   case PROP_MAX_HISTORY:
     filter->max_history = g_value_get_ulong(value);
