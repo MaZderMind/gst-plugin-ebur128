@@ -18,6 +18,11 @@
 #include <config.h>
 #endif
 
+/* suppress warnings for deprecated API such as GValueArray
+ * with newer GLib versions (>= 2.31.0) as logn as GArray is not supported
+ * everywhere */
+#define GLIB_DISABLE_DEPRECATION_WARNINGS
+
 #include <gst/audio/audio.h>
 #include <gst/audio/gstaudiofilter.h>
 #include <gst/gst.h>
