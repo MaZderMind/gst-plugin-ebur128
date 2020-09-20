@@ -522,8 +522,10 @@ static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
   if (GST_EVENT_TYPE(event) == GST_EVENT_EOS) {
     Gstebur128 *filter = GST_EBUR128(trans);
 
-    GST_DEBUG_OBJECT(filter, "received EOS, emitting ladt Message");
-    gst_ebur128_post_message(filter);
+    if (filter->state) {
+      GST_DEBUG_OBJECT(filter, "received EOS, emitting last Message");
+      gst_ebur128_post_message(filter);
+    }
   }
 
   return GST_BASE_TRANSFORM_CLASS(parent_class)->sink_event(trans, event);
