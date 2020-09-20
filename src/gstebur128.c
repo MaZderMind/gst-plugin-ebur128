@@ -1,7 +1,7 @@
 /**
  * SECTION:element-ebur128
  *
- * FIXME:Calculates the EBU-R 128 Loudness of an Audio-Stream and emits them as
+ * Calculates the EBU-R 128 Loudness of an Audio-Stream and emits them as
  * Message
  *
  * <refsect2>
@@ -64,15 +64,15 @@ enum {
   "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
   "layout = (string)interleaved "
 
-static GstStaticPadTemplate sink_factory =
+static GstStaticPadTemplate sink_template_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
                             GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
 
-static GstStaticPadTemplate src_factory = GST_STATIC_PAD_TEMPLATE(
+static GstStaticPadTemplate src_template_factory = GST_STATIC_PAD_TEMPLATE(
     "src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
 
 #define gst_ebur128_parent_class parent_class
-G_DEFINE_TYPE(Gstebur128, gst_ebur128, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE(Gstebur128, gst_ebur128, GST_TYPE_BASE_TRANSFORM);
 
 /* forward declarations */
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -80,10 +80,14 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
 static void gst_ebur128_get_property(GObject *object, guint prop_id,
                                      GValue *value, GParamSpec *pspec);
 static void gst_ebur128_finalize(GObject *object);
-static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
+
+static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
+                                     GstCaps *out);
+static gboolean gst_ebur128_start(GstBaseTransform *trans);
+static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
                                        GstEvent *event);
-static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
-                                       GstBuffer *buf);
+static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
+                                              GstBuffer *in);
 
 static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter);
 static void gst_ebur128_init_libebur128(Gstebur128 *filter);
@@ -99,16 +103,15 @@ static void gst_ebur128_post_message(Gstebur128 *filter);
 
 /* initialize the ebur128's class */
 static void gst_ebur128_class_init(Gstebur128Class *klass) {
-  GObjectClass *gobject_class;
-  GstElementClass *gstelement_class;
-
-  gobject_class = (GObjectClass *)klass;
-  gstelement_class = (GstElementClass *)klass;
+  GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
+  GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
+  GstBaseTransformClass *trans_class = GST_BASE_TRANSFORM_CLASS(klass);
 
   gobject_class->set_property = gst_ebur128_set_property;
   gobject_class->get_property = gst_ebur128_get_property;
   gobject_class->finalize = gst_ebur128_finalize;
 
+  // configure gobject properties
   g_object_class_install_property(
       gobject_class, PROP_MOMENTARY,
       g_param_spec_boolean("momentary", "Momentary Loudness Metering",
@@ -187,16 +190,25 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
           G_MAXUINT64, PROP_INTERVAL_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_set_details_simple(
-      gstelement_class, "ebur128", "Filter/Analyzer/Audio",
+  gst_element_class_add_static_pad_template(element_class,
+                                            &sink_template_factory);
+  gst_element_class_add_static_pad_template(element_class,
+                                            &src_template_factory);
+
+  gst_element_class_set_static_metadata(
+      element_class, "ebur128", "Filter/Analyzer/Audio",
       "Calculates the EBU-R 128 Loudness of an Audio-Stream and "
       "emits them as Message",
       "Peter Körner <peter@mazdermind.de>");
 
-  gst_element_class_add_pad_template(gstelement_class,
-                                     gst_static_pad_template_get(&src_factory));
-  gst_element_class_add_pad_template(
-      gstelement_class, gst_static_pad_template_get(&sink_factory));
+  // configure vmethods
+  trans_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128_set_caps);
+  trans_class->start = GST_DEBUG_FUNCPTR(gst_ebur128_start);
+  trans_class->transform_ip = GST_DEBUG_FUNCPTR(gst_ebur128_transform_ip);
+  trans_class->sink_event = GST_DEBUG_FUNCPTR(gst_ebur128_sink_event);
+
+  // enable passthrough
+  trans_class->passthrough_on_same_caps = TRUE;
 }
 
 /* initialize the new element
@@ -205,20 +217,10 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
  * initialize instance structure
  */
 static void gst_ebur128_init(Gstebur128 *filter) {
-  // init pads
-  filter->sinkpad = gst_pad_new_from_static_template(&sink_factory, "sink");
-  gst_pad_set_event_function(filter->sinkpad,
-                             GST_DEBUG_FUNCPTR(gst_ebur128_sink_event));
-  gst_pad_set_chain_function(filter->sinkpad,
-                             GST_DEBUG_FUNCPTR(gst_ebur128_chain));
-  GST_PAD_SET_PROXY_CAPS(filter->sinkpad);
-  gst_element_add_pad(GST_ELEMENT(filter), filter->sinkpad);
+  // configure base-transform class
+  gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(filter), TRUE);
 
-  filter->srcpad = gst_pad_new_from_static_template(&src_factory, "src");
-  GST_PAD_SET_PROXY_CAPS(filter->srcpad);
-  gst_element_add_pad(GST_ELEMENT(filter), filter->srcpad);
-
-  // init properties
+  // init property values
   filter->momentary = TRUE;
   filter->shortterm = FALSE;
   filter->global = FALSE;
@@ -229,8 +231,6 @@ static void gst_ebur128_init(Gstebur128 *filter) {
   filter->max_history = ULONG_MAX;
   filter->post_messages = TRUE;
   filter->interval = PROP_INTERVAL_DEFAULT;
-
-  filter->message_ts = GST_CLOCK_TIME_NONE;
 
   gst_audio_info_init(&filter->audio_info);
 }
@@ -365,10 +365,19 @@ static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
 }
 
 static void gst_ebur128_post_message(Gstebur128 *filter) {
+  GstBaseTransform *trans = GST_BASE_TRANSFORM_CAST (filter);
+
+  GstClockTime running_time = gst_segment_to_running_time (&trans->segment, GST_FORMAT_TIME, filter->message_ts);
+  GstClockTime stream_time = gst_segment_to_stream_time (&trans->segment, GST_FORMAT_TIME, filter->message_ts);
+
   GST_INFO_OBJECT(filter,
                   "emitting message "
-                  "message_ts=%" GST_TIME_FORMAT " ",
-                  GST_TIME_ARGS(filter->message_ts));
+                  "message_ts=%" GST_TIME_FORMAT " "
+                  "running_time=%" GST_TIME_FORMAT " "
+                  "stream_time=%" GST_TIME_FORMAT " ",
+                  GST_TIME_ARGS(filter->message_ts),
+                  GST_TIME_ARGS(running_time),
+                  GST_TIME_ARGS(stream_time));
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -460,55 +469,51 @@ static void gst_ebur128_get_property(GObject *object, guint prop_id,
   }
 }
 
-/* GstElement vmethod implementations */
+static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
+                                     GstCaps *out) {
+  Gstebur128 *filter = GST_EBUR128(trans);
 
-/* this function handles sink events */
-static gboolean gst_ebur128_sink_event(GstPad *pad, GstObject *parent,
-                                       GstEvent *event) {
-  Gstebur128 *filter;
-  gboolean ret;
+  GST_LOG_OBJECT(filter, "Received Caps in:  %" GST_PTR_FORMAT, in);
+  GST_LOG_OBJECT(filter, "Received Caps out: %" GST_PTR_FORMAT, out);
 
-  filter = GST_EBUR128(parent);
-
-  GST_LOG_OBJECT(filter, "Received %s event: %" GST_PTR_FORMAT,
-                 GST_EVENT_TYPE_NAME(event), event);
-
-  switch (GST_EVENT_TYPE(event)) {
-  case GST_EVENT_CAPS: {
-    /* parse caps */
-    GstCaps *caps;
-    gst_event_parse_caps(event, &caps);
-
-    /* store audio-info */
-    if (!gst_audio_info_from_caps(&filter->audio_info, caps)) {
-      GST_ERROR_OBJECT(filter, "Unhandled Caps: %" GST_PTR_FORMAT, caps);
-    }
-
-    /* init libebur128 */
-    gst_ebur128_init_libebur128(filter);
-
-    /* calculate interval */
-    gst_ebur128_recalc_interval_frames(filter);
-
-    /* forward event */
-    ret = gst_pad_event_default(pad, parent, event);
-    break;
+  /* store audio-info */
+  if (!gst_audio_info_from_caps(&filter->audio_info, in)) {
+    GST_ERROR_OBJECT(filter, "Unhandled Caps: %" GST_PTR_FORMAT, in);
+    return FALSE;
   }
-  default:
-    ret = gst_pad_event_default(pad, parent, event);
-    break;
-  }
-  return ret;
+
+  /* init libebur128 */
+  gst_ebur128_init_libebur128(filter);
+
+  /* calculate interval */
+  gst_ebur128_recalc_interval_frames(filter);
+
+  return TRUE;
 }
 
-/* chain function
- * this function does the actual processing
- */
-static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
-                                       GstBuffer *buf) {
-  Gstebur128 *filter;
+static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
+                                       GstEvent *event) {
+  if (GST_EVENT_TYPE(event) == GST_EVENT_EOS) {
+    Gstebur128 *filter = GST_EBUR128(trans);
 
-  filter = GST_EBUR128(parent);
+    GST_DEBUG_OBJECT(filter, "received EOS, emitting ladt Message");
+    gst_ebur128_post_message(filter);
+  }
+
+  return GST_BASE_TRANSFORM_CLASS(parent_class)->sink_event(trans, event);
+}
+
+static gboolean gst_ebur128_start(GstBaseTransform *trans) {
+  Gstebur128 *filter = GST_EBUR128(trans);
+
+  filter->message_ts = GST_CLOCK_TIME_NONE;
+
+  return TRUE;
+}
+
+static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
+                                              GstBuffer *buf) {
+  Gstebur128 *filter = GST_EBUR128(trans);
 
   GstMapInfo map_info;
   gst_buffer_map(buf, &map_info, GST_MAP_READ);
@@ -554,8 +559,7 @@ static GstFlowReturn gst_ebur128_chain(GstPad *pad, GstObject *parent,
 
   gst_ebur128_count_frames_and_emit_message(filter, num_frames, buf);
 
-  /* push out the incoming buffer without touching it */
-  return gst_pad_push(filter->srcpad, buf);
+  return GST_FLOW_OK;
 }
 
 /* entry point to initialize the plug-in
