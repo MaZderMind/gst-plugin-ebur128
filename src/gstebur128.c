@@ -356,28 +356,54 @@ static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
                      filter->frames_processed_in_interval,
                      filter->interval_frames, GST_TIME_ARGS(filter->interval));
 
-    if (filter->post_messages) {
-      gst_ebur128_post_message(filter);
-    }
+    gst_ebur128_post_message(filter);
 
     filter->frames_processed_in_interval = 0;
   }
 }
 
 static void gst_ebur128_post_message(Gstebur128 *filter) {
-  GstBaseTransform *trans = GST_BASE_TRANSFORM_CAST (filter);
+  if (!filter->post_messages) {
+    return;
+  }
 
-  GstClockTime running_time = gst_segment_to_running_time (&trans->segment, GST_FORMAT_TIME, filter->message_ts);
-  GstClockTime stream_time = gst_segment_to_stream_time (&trans->segment, GST_FORMAT_TIME, filter->message_ts);
+  GstBaseTransform *trans = GST_BASE_TRANSFORM_CAST(filter);
 
-  GST_INFO_OBJECT(filter,
-                  "emitting message "
-                  "message_ts=%" GST_TIME_FORMAT " "
-                  "running_time=%" GST_TIME_FORMAT " "
-                  "stream_time=%" GST_TIME_FORMAT " ",
-                  GST_TIME_ARGS(filter->message_ts),
-                  GST_TIME_ARGS(running_time),
-                  GST_TIME_ARGS(stream_time));
+  GstClockTime timestamp = filter->message_ts;
+  GstClockTime running_time =
+      gst_segment_to_running_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+  GstClockTime stream_time =
+      gst_segment_to_stream_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+
+  GstStructure *structure =
+      gst_structure_new("loudness", "timestamp", G_TYPE_UINT64, timestamp,
+                        "stream-time", G_TYPE_UINT64, stream_time,
+                        "running-time", G_TYPE_UINT64, running_time, NULL);
+
+  // momentary loudness in LUFS
+  if (filter->momentary) {
+    double momentary;
+    ebur128_loudness_momentary(filter->state, &momentary);
+    gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
+  }
+
+  if (filter->shortterm) {
+    double shortterm;
+    ebur128_loudness_shortterm(filter->state, &shortterm);
+    gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
+  }
+
+  if (filter->global) {
+    double global;
+    ebur128_loudness_global(filter->state, &global);
+    gst_structure_set(structure, "global", G_TYPE_DOUBLE, global, NULL);
+  }
+
+  GstMessage *message = gst_message_new_element(GST_OBJECT(filter), structure);
+  gst_element_post_message(GST_ELEMENT(filter), message);
+
+  GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT,
+                  GST_TIME_ARGS(timestamp));
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
