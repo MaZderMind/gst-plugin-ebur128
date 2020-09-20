@@ -98,6 +98,12 @@ static void gst_ebur128_count_frames_and_emit_message(Gstebur128 *filter,
                                                       gint frames_processed,
                                                       GstBuffer *buf);
 static void gst_ebur128_post_message(Gstebur128 *filter);
+typedef int (*per_channel_func_t)(ebur128_state *st,
+                                  unsigned int channel_number, double *out);
+
+static void gst_ebur128_fill_channel_array(Gstebur128 *filter,
+                                           GValue *array_gvalue,
+                                           per_channel_func_t func);
 
 /* GObject vmethod implementations */
 
@@ -380,23 +386,60 @@ static void gst_ebur128_post_message(Gstebur128 *filter) {
                         "stream-time", G_TYPE_UINT64, stream_time,
                         "running-time", G_TYPE_UINT64, running_time, NULL);
 
-  // momentary loudness in LUFS
+  // momentary loudness (last 400ms) in LUFS.
   if (filter->momentary) {
     double momentary;
     ebur128_loudness_momentary(filter->state, &momentary);
     gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
   }
 
+  // short-term loudness (last 3s) in LUFS.
   if (filter->shortterm) {
     double shortterm;
     ebur128_loudness_shortterm(filter->state, &shortterm);
     gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
   }
 
+  // global integrated loudness in LUFS.
   if (filter->global) {
     double global;
     ebur128_loudness_global(filter->state, &global);
     gst_structure_set(structure, "global", G_TYPE_DOUBLE, global, NULL);
+  }
+
+  // loudness of the specified window in LUFS.
+  if (filter->window > 0) {
+    double window;
+    ebur128_loudness_window(filter->state, filter->window, &window);
+    gst_structure_set(structure, "window", G_TYPE_DOUBLE, window, NULL);
+  }
+
+  // loudness range (LRA) of programme in LU.
+  if (filter->range) {
+    double range;
+    ebur128_loudness_range(filter->state, &range);
+    gst_structure_set(structure, "range", G_TYPE_DOUBLE, range, NULL);
+  }
+
+  // Maximum sample peak in float format (1.0 is 0 dBFS) from the last Frames,
+  // by channel. The equation to convert to dBFS is: 20 * log10(out).
+  if (filter->sample_peak) {
+    GValue sample_peak = {
+        0,
+    };
+    gst_ebur128_fill_channel_array(filter, &sample_peak, &ebur128_sample_peak);
+    gst_structure_take_value(structure, "sample-peak", &sample_peak);
+  }
+
+  // Maximum true peak in float format (1.0 is 0 dBFS) from all frames that have
+  // been processed, by channel. The eqation to convert to dBTP is: 20 *
+  // log10(out).
+  if (filter->true_peak) {
+    GValue true_peak = {
+        0,
+    };
+    gst_ebur128_fill_channel_array(filter, &true_peak, &ebur128_true_peak);
+    gst_structure_take_value(structure, "true-peak", &true_peak);
   }
 
   GstMessage *message = gst_message_new_element(GST_OBJECT(filter), structure);
@@ -404,6 +447,28 @@ static void gst_ebur128_post_message(Gstebur128 *filter) {
 
   GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT,
                   GST_TIME_ARGS(timestamp));
+}
+
+static void gst_ebur128_fill_channel_array(Gstebur128 *filter,
+                                           GValue *array_gvalue,
+                                           per_channel_func_t func) {
+  g_value_init(array_gvalue, G_TYPE_VALUE_ARRAY);
+  GValueArray *array = g_value_array_new(0);
+  g_value_take_boxed(array_gvalue, array);
+
+  double double_value = 0.0;
+  GValue double_gvalue = {
+      0,
+  };
+  g_value_init(&double_gvalue, G_TYPE_DOUBLE);
+
+  gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
+
+  for (gint channel = 0; channel < channels; channel++) {
+    func(filter->state, channel, &double_value);
+    g_value_set_double(&double_gvalue, double_value);
+    g_value_array_append(array, &double_gvalue);
+  }
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,

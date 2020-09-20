@@ -26,7 +26,7 @@ DEBUG=0
 run-ebur128:
 	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:$(DEBUG) gst-launch-1.0 -m \
 	  filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
-      ebur128 momentary=true shortterm=true global=true ! \
+      ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true ! \
 	  autoaudiosink
 
 run-ebur128-with-seek:
