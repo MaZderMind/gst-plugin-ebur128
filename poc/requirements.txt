@@ -1,0 +1,5 @@
+pycairo==1.19.1
+ruamel.yaml==0.16.12
+ruamel.yaml.clib==0.2.2
+vext==0.7.4
+vext.gi==0.7.4
