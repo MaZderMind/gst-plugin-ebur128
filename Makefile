@@ -23,7 +23,7 @@ inspect-ebur128graph:
 	GST_PLUGIN_PATH=$(realpath builddir) gst-inspect-1.0 ebur128graph
 
 run-tests: builddir
-	cd builddir && meson test
+	cd builddir && meson test -v
 
 run-ebur128:
 	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:0 gst-launch-1.0 -m \
