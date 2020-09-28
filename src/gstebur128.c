@@ -67,7 +67,7 @@ enum {
   "format = (string) " SUPPORTED_AUDIO_FORMATS ", "                            \
   "rate = " GST_AUDIO_RATE_RANGE ", "                                          \
   "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
-  "layout = (string)interleaved "
+  "layout = (string) interleaved "
 
 static GstStaticPadTemplate sink_template_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
