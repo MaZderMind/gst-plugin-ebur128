@@ -35,6 +35,18 @@
                                          "layout = (string) interleaved, "     \
                                          "rate = (int) 48000, "                \
                                          "channels = (int) 2"
+#define F32_CAPS_STRING                                                        \
+  "audio/x-raw, "                                                              \
+  "format = (string) " GST_AUDIO_NE(F32) ", "                                  \
+                                         "layout = (string) interleaved, "     \
+                                         "rate = (int) 48000, "                \
+                                         "channels = (int) 2"
+#define F64_CAPS_STRING                                                        \
+  "audio/x-raw, "                                                              \
+  "format = (string) " GST_AUDIO_NE(F64) ", "                                  \
+                                         "layout = (string) interleaved, "     \
+                                         "rate = (int) 48000, "                \
+                                         "channels = (int) 2"
 
 static GstStaticPadTemplate sinktemplate =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -112,13 +124,39 @@ static GstBuffer *create_buffer(const char *caps_string,
 
   guint num_frames = audio_info.rate * num_msecs / 1000;
   gsize num_bytes = audio_info.bpf * num_frames;
-  GST_INFO("create buffer of %ld bytes for %d frames of %d bpf (%d bps * %d channels) in %d msecs", num_bytes,
-           num_frames, audio_info.bpf, audio_info.bpf / audio_info.channels, audio_info.channels, num_msecs);
+  GST_INFO("create buffer of %ld bytes for %d frames of %d bpf (%d bps * %d "
+           "channels) in %d msecs",
+           num_bytes, num_frames, audio_info.bpf,
+           audio_info.bpf / audio_info.channels, audio_info.channels,
+           num_msecs);
   GstBuffer *buf = gst_buffer_new_and_alloc(num_bytes);
   GST_BUFFER_TIMESTAMP(buf) = G_GUINT64_CONSTANT(0);
 
   return buf;
 }
+
+#define DEFINE_TRIANGLE_BUFFER(NAME, T, MIN, MAX)                              \
+  static void fill_triangle_buffer_##NAME(                                     \
+      guint8 *buffer_data, guint num_samples_per_wave, guint num_frames,       \
+      const guint channels) {                                                  \
+    T *ptr = (T *)buffer_data;                                                 \
+                                                                               \
+    for (guint frame_idx = 0; frame_idx < num_frames; frame_idx++) {           \
+                                                                               \
+      T sample = (frame_idx % num_samples_per_wave) *                          \
+                     (MAX / num_samples_per_wave * 2) -                        \
+                 MIN;                                                          \
+                                                                               \
+      for (gint channel_idx = 0; channel_idx < channels; channel_idx++) {      \
+        ptr[frame_idx * channels + channel_idx] = sample / 8;                  \
+      }                                                                        \
+    }                                                                          \
+  };
+
+DEFINE_TRIANGLE_BUFFER(s16, gshort, G_MINSHORT, G_MAXSHORT)
+DEFINE_TRIANGLE_BUFFER(s32, gint, G_MININT, G_MAXINT)
+DEFINE_TRIANGLE_BUFFER(f32, gfloat, -1.0, 1.0)
+DEFINE_TRIANGLE_BUFFER(f64, gdouble, -1.0, 1.0)
 
 static GstBuffer *create_triangle_buffer(const char *caps_string,
                                          const guint num_msecs) {
@@ -135,26 +173,20 @@ static GstBuffer *create_triangle_buffer(const char *caps_string,
   guint num_frames = audio_info.rate * num_msecs / 1000;
 
   GST_INFO("num_samples_per_wave=%d", num_samples_per_wave);
-  for (guint frame_idx = 0; frame_idx < num_frames; frame_idx++) {
-    if (audio_info.finfo->format == GST_AUDIO_FORMAT_S16LE) {
-      gshort *ptr = (gshort *)map.data;
-      gshort sample = (frame_idx % num_samples_per_wave) *
-                          (G_MAXSHORT / num_samples_per_wave * 2) -
-                      G_MINSHORT;
-      for (gint channel_idx = 0; channel_idx < audio_info.channels;
-           channel_idx++) {
-        ptr[frame_idx * audio_info.channels + channel_idx] = sample / 8;
-      }
-    } else if (audio_info.finfo->format == GST_AUDIO_FORMAT_S32LE) {
-      gint *ptr = (gint *)map.data;
-      gint sample = (frame_idx % num_samples_per_wave) *
-                        (G_MAXINT / num_samples_per_wave * 2) -
-                    G_MININT;
-      for (gint channel_idx = 0; channel_idx < audio_info.channels;
-           channel_idx++) {
-        ptr[frame_idx * audio_info.channels + channel_idx] = sample / 8;
-      }
-    }
+  if (audio_info.finfo->format == GST_AUDIO_FORMAT_S16LE) {
+    fill_triangle_buffer_s16(map.data, num_samples_per_wave, num_frames,
+                             audio_info.channels);
+  } else if (audio_info.finfo->format == GST_AUDIO_FORMAT_S32LE) {
+    fill_triangle_buffer_s32(map.data, num_samples_per_wave, num_frames,
+                             audio_info.channels);
+  } else if (audio_info.finfo->format == GST_AUDIO_FORMAT_F32LE) {
+    fill_triangle_buffer_f32(map.data, num_samples_per_wave, num_frames,
+                             audio_info.channels);
+  } else if (audio_info.finfo->format == GST_AUDIO_FORMAT_F64LE) {
+    fill_triangle_buffer_f64(map.data, num_samples_per_wave, num_frames,
+                             audio_info.channels);
+  } else {
+    fail("Unhandled Format");
   }
 
   gst_buffer_unmap(buf, &map);
@@ -218,7 +250,7 @@ GST_START_TEST(test_passess_buffer_unchaged) {
 }
 GST_END_TEST;
 
-test_accepts(const char* caps_Str) {
+static void test_accepts(const char *caps_Str) {
   GstMessage *message;
   GstBuffer *inbuffer;
 
@@ -239,14 +271,16 @@ test_accepts(const char* caps_Str) {
   cleanup_element();
 }
 
-GST_START_TEST(test_accepts_s16) {
-  test_accepts(S16_CAPS_STRING);
-}
+GST_START_TEST(test_accepts_s16) { test_accepts(S16_CAPS_STRING); }
 GST_END_TEST;
 
-GST_START_TEST(test_accepts_s32) {
-  test_accepts(S32_CAPS_STRING);
-}
+GST_START_TEST(test_accepts_s32) { test_accepts(S32_CAPS_STRING); }
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_f32) { test_accepts(F32_CAPS_STRING); }
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_f64) { test_accepts(F64_CAPS_STRING); }
 GST_END_TEST;
 
 static Suite *element_suite(void) {
@@ -262,6 +296,8 @@ static Suite *element_suite(void) {
   suite_add_tcase(s, tc_audio_formats);
   tcase_add_test(tc_audio_formats, test_accepts_s16);
   tcase_add_test(tc_audio_formats, test_accepts_s32);
+  tcase_add_test(tc_audio_formats, test_accepts_f32);
+  tcase_add_test(tc_audio_formats, test_accepts_f64);
 
   return s;
 }
