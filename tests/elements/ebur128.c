@@ -205,6 +205,7 @@ GST_START_TEST(test_emits_message) {
   GstBuffer *inbuffer;
 
   setup_element(S16_CAPS_STRING);
+  g_object_set(element, "interval", 100 * GST_MSECOND, NULL);
 
   /* create a fake 100 msec buffer with all zeros */
   inbuffer = create_buffer(S16_CAPS_STRING, 100);
