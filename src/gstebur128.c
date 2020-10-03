@@ -57,7 +57,7 @@ enum {
  */
 
 #define SUPPORTED_AUDIO_FORMATS                                                \
-  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S24) "," GST_AUDIO_NE(              \
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(              \
       F32) ", " GST_AUDIO_NE(F64) " }"
 
 #define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
@@ -718,8 +718,8 @@ static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
     success &= gst_ebur128_validate_lib_return(filter,
                                                "ebur128_add_frames_short", ret);
     break;
-  case GST_AUDIO_FORMAT_S24LE:
-  case GST_AUDIO_FORMAT_S24BE:
+  case GST_AUDIO_FORMAT_S32LE:
+  case GST_AUDIO_FORMAT_S32BE:
     ret = ebur128_add_frames_int(filter->state, (const int *)data, num_frames);
     success &=
         gst_ebur128_validate_lib_return(filter, "ebur128_add_frames_int", ret);

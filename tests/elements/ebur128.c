@@ -10,7 +10,7 @@
 #include <gst/check/gstcheck.h>
 
 #define SUPPORTED_AUDIO_FORMATS                                                \
-  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S24) "," GST_AUDIO_NE(              \
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(              \
       F32) ", " GST_AUDIO_NE(F64) " }"
 
 #define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
@@ -22,10 +22,16 @@
   "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
   "layout = (string) interleaved "
 
-/* we use rate = 48000 here for easy buffer size calculations */
 #define S16_CAPS_STRING                                                        \
   "audio/x-raw, "                                                              \
   "format = (string) " GST_AUDIO_NE(S16) ", "                                  \
+                                         "layout = (string) interleaved, "     \
+                                         "rate = (int) 48000, "                \
+                                         "channels = (int) 2"
+
+#define S32_CAPS_STRING                                                        \
+  "audio/x-raw, "                                                              \
+  "format = (string) " GST_AUDIO_NE(S32) ", "                                  \
                                          "layout = (string) interleaved, "     \
                                          "rate = (int) 48000, "                \
                                          "channels = (int) 2"
