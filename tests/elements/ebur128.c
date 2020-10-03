@@ -251,6 +251,53 @@ GST_START_TEST(test_passess_buffer_unchaged) {
 }
 GST_END_TEST;
 
+GST_START_TEST(test_timestamps) {
+  GstMessage *message;
+  GstBuffer *inbuffer;
+
+  setup_element(S16_CAPS_STRING);
+  g_object_set(element, "interval", 100 * GST_MSECOND, NULL);
+
+  for (size_t iteration = 0; iteration < 3; iteration++) {
+    inbuffer = create_buffer(S16_CAPS_STRING, 100);
+    gst_pad_push(mysrcpad, inbuffer);
+
+    message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+    fail_unless(message != NULL);
+    fail_unless(GST_MESSAGE_SRC(message) == GST_OBJECT(element));
+    fail_unless(GST_MESSAGE_TYPE(message) == GST_MESSAGE_ELEMENT);
+
+    const GstStructure *structure = gst_message_get_structure(message);
+    ck_assert_str_eq(gst_structure_get_name(structure), "loudness");
+
+    fail_unless(gst_structure_n_fields(structure) == 4);
+    fail_unless(gst_structure_has_field(structure, "timestamp"));
+    fail_unless(gst_structure_has_field(structure, "stream-time"));
+    fail_unless(gst_structure_has_field(structure, "running-time"));
+
+    GstClockTime expectation = GST_MSECOND * (iteration + 1) * 100;
+
+    GstClockTime timestamp;
+    gst_structure_get_clock_time(structure, "timestamp", &timestamp);
+    GST_INFO("Gost timestamp=%ld, expected %ld", timestamp, expectation);
+    fail_unless(timestamp == expectation);
+
+    GstClockTime stream_time;
+    gst_structure_get_clock_time(structure, "stream-time", &stream_time);
+    fail_unless(stream_time == expectation);
+
+    GstClockTime running_time;
+    gst_structure_get_clock_time(structure, "running-time", &running_time);
+    fail_unless(running_time == expectation);
+
+    gst_message_unref(message);
+    message = NULL;
+  }
+
+  cleanup_element();
+}
+GST_END_TEST;
+
 static void test_accepts(const char *caps_Str) {
   GstMessage *message;
   GstBuffer *inbuffer;
@@ -292,6 +339,7 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_general, test_setup_and_teardown);
   tcase_add_test(tc_general, test_emits_message);
   tcase_add_test(tc_general, test_passess_buffer_unchaged);
+  tcase_add_test(tc_general, test_timestamps);
 
   TCase *tc_audio_formats = tcase_create("audio_formats");
   suite_add_tcase(s, tc_audio_formats);
