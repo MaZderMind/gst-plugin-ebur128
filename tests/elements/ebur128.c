@@ -51,7 +51,7 @@ static GstBus *bus;
 
 /* takes over reference for outcaps */
 static void setup_element(const gchar *caps_str) {
-  GST_DEBUG("setup_element");
+  GST_INFO("setup_element");
   element = gst_check_setup_element("ebur128");
   mysrcpad = gst_check_setup_src_pad(element, &srctemplate);
   mysinkpad = gst_check_setup_sink_pad(element, &sinktemplate);
@@ -76,7 +76,7 @@ static void setup_element(const gchar *caps_str) {
 }
 
 static void cleanup_element() {
-  GST_DEBUG("cleanup_element");
+  GST_INFO("cleanup_element");
 
   /* flush bus */
   gst_bus_set_flushing(bus, TRUE);
@@ -98,19 +98,66 @@ static void cleanup_element() {
   gst_check_teardown_element(element);
 }
 
+static void caps_to_audio_info(const char *caps_string,
+                               GstAudioInfo *audio_info) {
+  GstCaps *caps = gst_caps_from_string(caps_string);
+  gst_audio_info_from_caps(audio_info, caps);
+  gst_caps_unref(caps);
+}
+
 static GstBuffer *create_buffer(const char *caps_string,
                                 const guint num_msecs) {
-  GstCaps *caps = gst_caps_from_string(caps_string);
   GstAudioInfo audio_info;
-  gst_audio_info_from_caps(&audio_info, caps);
-  gst_caps_unref(caps);
+  caps_to_audio_info(caps_string, &audio_info);
 
   guint num_frames = audio_info.rate * num_msecs / 1000;
   gsize num_bytes = audio_info.bpf * num_frames;
-  GST_DEBUG("create bufffer of %ld bytes for %d frames in %d msecs", num_bytes,
-            num_frames, num_msecs);
+  GST_INFO("create buffer of %ld bytes for %d frames of %d bpf (%d bps * %d channels) in %d msecs", num_bytes,
+           num_frames, audio_info.bpf, audio_info.bpf / audio_info.channels, audio_info.channels, num_msecs);
   GstBuffer *buf = gst_buffer_new_and_alloc(num_bytes);
   GST_BUFFER_TIMESTAMP(buf) = G_GUINT64_CONSTANT(0);
+
+  return buf;
+}
+
+static GstBuffer *create_triangle_buffer(const char *caps_string,
+                                         const guint num_msecs) {
+  GstBuffer *buf = create_buffer(caps_string, num_msecs);
+
+  GstAudioInfo audio_info;
+  caps_to_audio_info(caps_string, &audio_info);
+
+  GstMapInfo map;
+  gst_buffer_map(buf, &map, GST_MAP_WRITE);
+
+  // 500 Hz Triangle, 1/8 (0.2) FS
+  guint num_samples_per_wave = audio_info.rate / 500 /* Hz */;
+  guint num_frames = audio_info.rate * num_msecs / 1000;
+
+  GST_INFO("num_samples_per_wave=%d", num_samples_per_wave);
+  for (guint frame_idx = 0; frame_idx < num_frames; frame_idx++) {
+    if (audio_info.finfo->format == GST_AUDIO_FORMAT_S16LE) {
+      gshort *ptr = (gshort *)map.data;
+      gshort sample = (frame_idx % num_samples_per_wave) *
+                          (G_MAXSHORT / num_samples_per_wave * 2) -
+                      G_MINSHORT;
+      for (gint channel_idx = 0; channel_idx < audio_info.channels;
+           channel_idx++) {
+        ptr[frame_idx * audio_info.channels + channel_idx] = sample / 8;
+      }
+    } else if (audio_info.finfo->format == GST_AUDIO_FORMAT_S32LE) {
+      gint *ptr = (gint *)map.data;
+      gint sample = (frame_idx % num_samples_per_wave) *
+                        (G_MAXINT / num_samples_per_wave * 2) -
+                    G_MININT;
+      for (gint channel_idx = 0; channel_idx < audio_info.channels;
+           channel_idx++) {
+        ptr[frame_idx * audio_info.channels + channel_idx] = sample / 8;
+      }
+    }
+  }
+
+  gst_buffer_unmap(buf, &map);
 
   return buf;
 }
@@ -171,14 +218,50 @@ GST_START_TEST(test_passess_buffer_unchaged) {
 }
 GST_END_TEST;
 
+test_accepts(const char* caps_Str) {
+  GstMessage *message;
+  GstBuffer *inbuffer;
+
+  setup_element(caps_Str);
+  g_object_set(element, "interval", 1000 * GST_MSECOND, NULL);
+  inbuffer = create_triangle_buffer(caps_Str, 1000);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  const GstStructure *structure = gst_message_get_structure(message);
+
+  gdouble momentary;
+  gst_structure_get_double(structure, "momentary", &momentary);
+  GST_INFO("got momentary=%f", momentary);
+  fail_unless(-20.0 < momentary && momentary < -19.0);
+
+  gst_message_unref(message);
+  cleanup_element();
+}
+
+GST_START_TEST(test_accepts_s16) {
+  test_accepts(S16_CAPS_STRING);
+}
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_s32) {
+  test_accepts(S32_CAPS_STRING);
+}
+GST_END_TEST;
+
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128");
-  TCase *tc_general = tcase_create("general");
 
+  TCase *tc_general = tcase_create("general");
   suite_add_tcase(s, tc_general);
   tcase_add_test(tc_general, test_setup_and_teardown);
   tcase_add_test(tc_general, test_emits_message);
   tcase_add_test(tc_general, test_passess_buffer_unchaged);
+
+  TCase *tc_audio_formats = tcase_create("audio_formats");
+  suite_add_tcase(s, tc_audio_formats);
+  tcase_add_test(tc_audio_formats, test_accepts_s16);
+  tcase_add_test(tc_audio_formats, test_accepts_s32);
 
   return s;
 }
