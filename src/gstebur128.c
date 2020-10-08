@@ -24,7 +24,6 @@
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
 #include <gst/audio/audio.h>
-#include <gst/audio/gstaudiofilter.h>
 #include <gst/gst.h>
 
 #include "gstebur128.h"
@@ -57,7 +56,7 @@ enum {
  */
 
 #define SUPPORTED_AUDIO_FORMATS                                                \
-  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S24) "," GST_AUDIO_NE(              \
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(              \
       F32) ", " GST_AUDIO_NE(F64) " }"
 
 #define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
@@ -67,7 +66,7 @@ enum {
   "format = (string) " SUPPORTED_AUDIO_FORMATS ", "                            \
   "rate = " GST_AUDIO_RATE_RANGE ", "                                          \
   "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
-  "layout = (string)interleaved "
+  "layout = (string) interleaved "
 
 static GstStaticPadTemplate sink_template_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -260,7 +259,7 @@ static void gst_ebur128_finalize(GObject *object) {
 static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
   gint mode = 0;
 
-  if (filter->momentary)
+  if (filter->momentary || filter->window > 0)
     mode |= EBUR128_MODE_M;
   if (filter->shortterm)
     mode |= EBUR128_MODE_S;
@@ -639,7 +638,7 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
 
   GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&filter->audio_info);
   const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&filter->audio_info);
-  const gint num_frames = map_info.size / bytes_per_frame;
+  gint num_frames = map_info.size / bytes_per_frame;
   const gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
 
   // Manage Message-Timestamp
@@ -657,43 +656,32 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                    num_frames, bytes_per_frame, channels);
 
   gboolean success = TRUE;
-  if (filter->frames_since_last_mesage + num_frames <=
-      filter->interval_frames) {
-    // frames to fit, at once
 
-    success &=
-        gst_ebur128_add_frames(filter, format, map_info.data, num_frames);
-
-    filter->frames_since_last_mesage += num_frames;
-  } else {
-    // first half
-    const guint first_half =
+  guint8 *data_ptr = map_info.data;
+  while (num_frames > 0) {
+    const gint max_frames_to_process =
         filter->interval_frames - filter->frames_since_last_mesage;
-    const guint second_half = num_frames - first_half;
 
-    GST_DEBUG_OBJECT(filter,
-                     "Adding %u frames to already processed %u frames would "
-                     "exceed interval_frames=%u, processing in two "
-                     "halfs of %u and %u frames each",
-                     num_frames, filter->frames_since_last_mesage,
-                     filter->interval_frames, first_half, second_half);
+    const gint frames_to_process =
+        max_frames_to_process > num_frames ? num_frames : max_frames_to_process;
+
+    GST_INFO_OBJECT(filter,
+                    "Processing %d of %d Frames "
+                    "(Frames since last mesage: %d, interval_frames: %d)",
+                    frames_to_process, num_frames,
+                    filter->frames_since_last_mesage, filter->interval_frames);
 
     success &=
-        gst_ebur128_add_frames(filter, format, map_info.data, first_half);
+        gst_ebur128_add_frames(filter, format, data_ptr, frames_to_process);
 
-    gst_ebur128_post_message(filter);
+    data_ptr += frames_to_process * bytes_per_frame;
+    num_frames -= frames_to_process;
+    filter->frames_since_last_mesage += frames_to_process;
 
-    // second half
-    guint8 *second_half_ptr = map_info.data + (first_half * bytes_per_frame);
-    success &=
-        gst_ebur128_add_frames(filter, format, second_half_ptr, second_half);
-
-    filter->frames_since_last_mesage = second_half;
-  }
-
-  if (filter->frames_since_last_mesage >= filter->interval_frames) {
-    gst_ebur128_post_message(filter);
-    filter->frames_since_last_mesage = 0;
+    if (filter->frames_since_last_mesage >= filter->interval_frames) {
+      gst_ebur128_post_message(filter);
+      filter->frames_since_last_mesage = 0;
+    }
   }
 
   gst_buffer_unmap(buf, &map_info);
@@ -718,8 +706,8 @@ static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
     success &= gst_ebur128_validate_lib_return(filter,
                                                "ebur128_add_frames_short", ret);
     break;
-  case GST_AUDIO_FORMAT_S24LE:
-  case GST_AUDIO_FORMAT_S24BE:
+  case GST_AUDIO_FORMAT_S32LE:
+  case GST_AUDIO_FORMAT_S32BE:
     ret = ebur128_add_frames_int(filter->state, (const int *)data, num_frames);
     success &=
         gst_ebur128_validate_lib_return(filter, "ebur128_add_frames_int", ret);
