@@ -328,6 +328,88 @@ GST_END_TEST;
 GST_START_TEST(test_accepts_f64) { test_accepts(F64_CAPS_STRING); }
 GST_END_TEST;
 
+static void has_only_property(const char *prop_name) {
+  GstMessage *message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  const GstStructure *structure = gst_message_get_structure(message);
+
+  fail_unless(gst_structure_n_fields(structure) == 4);
+  fail_unless(gst_structure_has_field(structure, "timestamp"));
+  fail_unless(gst_structure_has_field(structure, "stream-time"));
+  fail_unless(gst_structure_has_field(structure, "running-time"));
+  fail_unless(gst_structure_has_field(structure, prop_name));
+
+  gst_message_unref(message);
+}
+
+static void test_bool_property(const char *prop_name) {
+  setup_element(S16_CAPS_STRING);
+
+  g_object_set(element,
+               // configure interval
+               "interval", 100 * GST_MSECOND,
+
+               // null default-true of momentary
+               "momentary", FALSE,
+
+               // set property
+               prop_name, TRUE,
+
+               // sentinel
+               NULL);
+
+  GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  has_only_property(prop_name);
+
+  cleanup_element();
+}
+
+static void test_ulong_property(const char *prop_name, gulong value) {
+  setup_element(S16_CAPS_STRING);
+
+  g_object_set(element,
+               // configure interval
+               "interval", 100 * GST_MSECOND,
+
+               // null default-true of momentary
+               "momentary", FALSE,
+
+               // null default-true of momentary
+               prop_name, value,
+
+               // sentinel
+               NULL);
+
+  GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 1000);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  has_only_property(prop_name);
+
+  cleanup_element();
+}
+
+GST_START_TEST(test_prop_momentary) { test_bool_property("momentary"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_shortterm) { test_bool_property("shortterm"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_global) { test_bool_property("global"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_window) { test_ulong_property("window", 42); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_range) { test_bool_property("range"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_sample_peak) { test_bool_property("sample-peak"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_true_peak) { test_bool_property("true-peak"); }
+GST_END_TEST;
+
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128");
 
@@ -344,6 +426,16 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_audio_formats, test_accepts_s32);
   tcase_add_test(tc_audio_formats, test_accepts_f32);
   tcase_add_test(tc_audio_formats, test_accepts_f64);
+
+  TCase *tc_properties = tcase_create("properties");
+  suite_add_tcase(s, tc_properties);
+  tcase_add_test(tc_properties, test_prop_momentary);
+  tcase_add_test(tc_properties, test_prop_shortterm);
+  tcase_add_test(tc_properties, test_prop_global);
+  tcase_add_test(tc_properties, test_prop_window);
+  tcase_add_test(tc_properties, test_prop_range);
+  tcase_add_test(tc_properties, test_prop_sample_peak);
+  tcase_add_test(tc_properties, test_prop_true_peak);
 
   return s;
 }
