@@ -1,5 +1,5 @@
-#ifndef __GST_EBUR128_H__
-#define __GST_EBUR128_H__
+#ifndef __GST_EBUR128GRAPH_H__
+#define __GST_EBUR128GRAPH_H__
 
 #include "plugin.h"
 #include <ebur128.h>
@@ -9,10 +9,11 @@
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_EBUR128 (gst_ebur128_get_type())
-G_DECLARE_FINAL_TYPE(GstEbur128, gst_ebur128, GST, EBUR128, GstBaseTransform)
+#define GST_TYPE_EBUR128GRAPH (gst_ebur128graph_get_type())
+G_DECLARE_FINAL_TYPE(GstEbur128Graph, gst_ebur128graph, GST, EBUR128GRAPH,
+                     GstBaseTransform)
 
-struct _GstEbur128 {
+struct _GstEbur128Graph {
   GstBaseTransform base_transform;
 
   GstPad *sinkpad, *srcpad;
@@ -41,4 +42,4 @@ struct _GstEbur128 {
 
 G_END_DECLS
 
-#endif /* __GST_EBUR128_H__ */
+#endif /* __GST_EBUR128GRAPH_H__ */
