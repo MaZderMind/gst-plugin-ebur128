@@ -432,29 +432,30 @@ GST_START_TEST(test_prop_post_messages) {
 }
 GST_END_TEST;
 
-GST_START_TEST(test_prop_interval) {
+// buffers smaller then interval
+GST_START_TEST(test_small_buffers) {
   GstMessage *message;
   const GstStructure *structure;
   GstBuffer *inbuffer;
   GstClockTime timestamp;
 
   setup_element(S16_CAPS_STRING);
-  g_object_set(element, "interval", 250 * GST_MSECOND, NULL);
+  g_object_set(element, "interval", 100 * GST_MSECOND, NULL);
 
-  // 100 ms
-  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  // 40 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 40);
   gst_pad_push(mysrcpad, inbuffer);
   message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
   fail_unless(message == NULL);
 
-  // 200 ms
-  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  // 80 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 40);
   gst_pad_push(mysrcpad, inbuffer);
   message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
   fail_unless(message == NULL);
 
-  // 300 ms
-  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  // 120 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 40);
   gst_pad_push(mysrcpad, inbuffer);
   message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
   fail_if(message == NULL); // message at 250ms, 50ms remaining
@@ -462,17 +463,17 @@ GST_START_TEST(test_prop_interval) {
   // validate timestamp
   structure = gst_message_get_structure(message);
   gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-  fail_unless(timestamp == 250 * GST_MSECOND);
+  fail_unless(timestamp == 100 * GST_MSECOND);
   gst_message_unref(message);
 
-  // 400 ms
-  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  // 160 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 40);
   gst_pad_push(mysrcpad, inbuffer);
   message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
   fail_unless(message == NULL);
 
-  // 500 ms
-  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  // 200 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 40);
   gst_pad_push(mysrcpad, inbuffer);
   message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
   fail_if(message == NULL); // message at 500ms
@@ -480,8 +481,94 @@ GST_START_TEST(test_prop_interval) {
   // validate timestamp
   structure = gst_message_get_structure(message);
   gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-  fail_unless(timestamp == 500 * GST_MSECOND);
+  fail_unless(timestamp == 200 * GST_MSECOND);
   gst_message_unref(message);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
+// buffers equal to interval
+GST_START_TEST(test_medium_buffers) {
+  GstMessage *message;
+  const GstStructure *structure;
+  GstBuffer *inbuffer;
+  GstClockTime timestamp;
+
+  setup_element(S16_CAPS_STRING);
+  g_object_set(element, "interval", 100 * GST_MSECOND, NULL);
+
+  // 100 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  fail_if(message == NULL);
+
+  // validate timestamp
+  structure = gst_message_get_structure(message);
+  gst_structure_get_clock_time(structure, "timestamp", &timestamp);
+  fail_unless(timestamp == 100 * GST_MSECOND);
+  gst_message_unref(message);
+
+  // 200 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  fail_if(message == NULL);
+
+  // validate timestamp
+  structure = gst_message_get_structure(message);
+  gst_structure_get_clock_time(structure, "timestamp", &timestamp);
+  fail_unless(timestamp == 200 * GST_MSECOND);
+  gst_message_unref(message);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
+// buffers larger then to interval
+GST_START_TEST(test_large_buffers) {
+  GstMessage *message;
+  const GstStructure *structure;
+  GstBuffer *inbuffer;
+  GstClockTime timestamp;
+
+  setup_element(S16_CAPS_STRING);
+  g_object_set(element, "interval", 100 * GST_MSECOND, NULL);
+
+  // 1000 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 1000);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  // expect 10 messages
+  for (gint iteration = 0; iteration < 10; iteration++) {
+    message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
+    fail_if(message == NULL);
+
+    // validate timestamp
+    structure = gst_message_get_structure(message);
+    gst_structure_get_clock_time(structure, "timestamp", &timestamp);
+    GST_WARNING("iteration=%d, timestamp=%ld", iteration, timestamp);
+    fail_unless(timestamp == 100 * GST_MSECOND * (iteration + 1));
+    gst_message_unref(message);
+  }
+
+  // 2000 ms
+  inbuffer = create_buffer(S16_CAPS_STRING, 1000);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  // expect 10 messages
+  for (gint iteration = 0; iteration < 10; iteration++) {
+    message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, 50 * GST_MSECOND);
+    fail_if(message == NULL);
+
+    // validate timestamp
+    structure = gst_message_get_structure(message);
+    gst_structure_get_clock_time(structure, "timestamp", &timestamp);
+    GST_WARNING("iteration=%d, timestamp=%ld", iteration, timestamp);
+    fail_unless(timestamp == (100 * GST_MSECOND * (iteration + 11)));
+    gst_message_unref(message);
+  }
 
   cleanup_element();
 }
@@ -514,7 +601,13 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_properties, test_prop_sample_peak);
   tcase_add_test(tc_properties, test_prop_true_peak);
   tcase_add_test(tc_properties, test_prop_post_messages);
-  tcase_add_test(tc_properties, test_prop_interval);
+  // prop "interval" is thoroughly tested in the buffer-size testcase
+
+  TCase *tc_buffer_size = tcase_create("buffer-size");
+  suite_add_tcase(s, tc_buffer_size);
+  tcase_add_test(tc_buffer_size, test_small_buffers);
+  tcase_add_test(tc_buffer_size, test_medium_buffers);
+  tcase_add_test(tc_buffer_size, test_large_buffers);
 
   return s;
 }

@@ -666,16 +666,11 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
     const gint frames_to_process =
         max_frames_to_process > num_frames ? num_frames : max_frames_to_process;
 
-    GST_WARNING_OBJECT(filter,
-                       "interval_frames=%d "
-                       "max_frames_to_process=%d "
-                       "num_frames=%d "
-                       "frames_to_process=%d "
-                       "frames_since_last_mesage=%d "
-                       "data_ptr=%p",
-                       filter->interval_frames, max_frames_to_process,
-                       num_frames, frames_to_process,
-                       filter->frames_since_last_mesage, data_ptr);
+    GST_INFO_OBJECT(filter,
+                    "Processing %d of %d Frames "
+                    "(Frames since last mesage: %d, interval_frames: %d)",
+                    frames_to_process, num_frames,
+                    filter->frames_since_last_mesage, filter->interval_frames);
 
     success &=
         gst_ebur128_add_frames(filter, format, data_ptr, frames_to_process);
