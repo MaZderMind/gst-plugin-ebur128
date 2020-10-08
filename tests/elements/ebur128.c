@@ -298,16 +298,13 @@ GST_START_TEST(test_timestamps) {
 }
 GST_END_TEST;
 
-static void test_accepts(const char *caps_Str) {
-  GstMessage *message;
-  GstBuffer *inbuffer;
-
-  setup_element(caps_Str);
+static void test_accepts(const char *caps_str) {
+  setup_element(caps_str);
   g_object_set(element, "interval", 1000 * GST_MSECOND, NULL);
-  inbuffer = create_triangle_buffer(caps_Str, 1000);
+  GstBuffer *inbuffer = create_triangle_buffer(caps_str, 1000);
   gst_pad_push(mysrcpad, inbuffer);
 
-  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  GstMessage *message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
   const GstStructure *structure = gst_message_get_structure(message);
 
   gdouble momentary;
