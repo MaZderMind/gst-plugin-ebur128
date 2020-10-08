@@ -24,7 +24,6 @@
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
 #include <gst/audio/audio.h>
-#include <gst/audio/gstaudiofilter.h>
 #include <gst/gst.h>
 
 #include "gstebur128.h"
