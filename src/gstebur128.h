@@ -7,9 +7,9 @@
 G_BEGIN_DECLS
 
 #define GST_TYPE_EBUR128 (gst_ebur128_get_type())
-G_DECLARE_FINAL_TYPE(Gstebur128, gst_ebur128, GST, EBUR128, GstBaseTransform)
+G_DECLARE_FINAL_TYPE(GstEbur128, gst_ebur128, GST, EBUR128, GstBaseTransform)
 
-struct _Gstebur128 {
+struct _GstEbur128 {
   GstBaseTransform base_transform;
 
   GstPad *sinkpad, *srcpad;

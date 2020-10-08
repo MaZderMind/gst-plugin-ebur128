@@ -76,7 +76,7 @@ static GstStaticPadTemplate src_template_factory = GST_STATIC_PAD_TEMPLATE(
     "src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
 
 #define gst_ebur128_parent_class parent_class
-G_DEFINE_TYPE(Gstebur128, gst_ebur128, GST_TYPE_BASE_TRANSFORM);
+G_DEFINE_TYPE(GstEbur128, gst_ebur128, GST_TYPE_BASE_TRANSFORM);
 
 /* forward declarations */
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -93,32 +93,32 @@ static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
 static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                                               GstBuffer *in);
 
-static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter);
-static void gst_ebur128_init_libebur128(Gstebur128 *filter);
-static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter);
-static void gst_ebur128_destroy_libebur128(Gstebur128 *filter);
-static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter);
-static gboolean gst_ebur128_post_message(Gstebur128 *filter);
+static gint gst_ebur128_calculate_libebur128_mode(GstEbur128 *filter);
+static void gst_ebur128_init_libebur128(GstEbur128 *filter);
+static void gst_ebur128_reinit_libebur128_if_mode_changed(GstEbur128 *filter);
+static void gst_ebur128_destroy_libebur128(GstEbur128 *filter);
+static void gst_ebur128_recalc_interval_frames(GstEbur128 *filter);
+static gboolean gst_ebur128_post_message(GstEbur128 *filter);
 typedef int (*per_channel_func_t)(ebur128_state *st,
                                   unsigned int channel_number, double *out);
 
-static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
+static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
                                                GValue *array_gvalue,
                                                const char *func_name,
                                                per_channel_func_t func);
 
-static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
+static gboolean gst_ebur128_validate_lib_return(GstEbur128 *filter,
                                                 const char *invocation,
                                                 const int return_value);
 
-static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
+static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
                                        GstAudioFormat format, guint8 *data,
                                        gint num_frames);
 
 /* GObject vmethod implementations */
 
 /* initialize the ebur128's class */
-static void gst_ebur128_class_init(Gstebur128Class *klass) {
+static void gst_ebur128_class_init(GstEbur128Class *klass) {
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
   GstBaseTransformClass *trans_class = GST_BASE_TRANSFORM_CLASS(klass);
@@ -232,7 +232,7 @@ static void gst_ebur128_class_init(Gstebur128Class *klass) {
  * set pad calback functions
  * initialize instance structure
  */
-static void gst_ebur128_init(Gstebur128 *filter) {
+static void gst_ebur128_init(GstEbur128 *filter) {
   // configure base-transform class
   gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(filter), TRUE);
 
@@ -252,11 +252,11 @@ static void gst_ebur128_init(Gstebur128 *filter) {
 }
 
 static void gst_ebur128_finalize(GObject *object) {
-  Gstebur128 *filter = GST_EBUR128(object);
+  GstEbur128 *filter = GST_EBUR128(object);
   gst_ebur128_destroy_libebur128(filter);
 }
 
-static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
+static gint gst_ebur128_calculate_libebur128_mode(GstEbur128 *filter) {
   gint mode = 0;
 
   if (filter->momentary || filter->window > 0)
@@ -276,7 +276,7 @@ static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
   return mode;
 }
 
-static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
+static void gst_ebur128_init_libebur128(GstEbur128 *filter) {
   gint rate = GST_AUDIO_INFO_RATE(&filter->audio_info);
   gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
   gint mode = gst_ebur128_calculate_libebur128_mode(filter);
@@ -294,14 +294,14 @@ static void gst_ebur128_init_libebur128(Gstebur128 *filter) {
       rate, channels, mode, filter->window, filter->max_history);
 }
 
-static void gst_ebur128_destroy_libebur128(Gstebur128 *filter) {
+static void gst_ebur128_destroy_libebur128(GstEbur128 *filter) {
   if (filter->state != NULL) {
     GST_LOG_OBJECT(filter, "Destroying libebur128 State");
     ebur128_destroy(&filter->state);
   }
 }
 
-static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) {
+static void gst_ebur128_reinit_libebur128_if_mode_changed(GstEbur128 *filter) {
   if (!filter->state) {
     // libebur128 not initialized yet
     return;
@@ -321,7 +321,7 @@ static void gst_ebur128_reinit_libebur128_if_mode_changed(Gstebur128 *filter) {
 
 // Borrowed from gstlevel:
 // https://github.com/GStreamer/gst-plugins-good/blob/46989dc/gst/level/gstlevel.c#L385
-static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter) {
+static void gst_ebur128_recalc_interval_frames(GstEbur128 *filter) {
   GstClockTime interval = filter->interval;
   guint sample_rate = GST_AUDIO_INFO_RATE(&filter->audio_info);
   guint interval_frames;
@@ -346,7 +346,7 @@ static void gst_ebur128_recalc_interval_frames(Gstebur128 *filter) {
                   interval_frames, GST_TIME_ARGS(interval), sample_rate);
 }
 
-static gboolean gst_ebur128_post_message(Gstebur128 *filter) {
+static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (!filter->post_messages) {
     return TRUE;
   }
@@ -454,7 +454,7 @@ static gboolean gst_ebur128_post_message(Gstebur128 *filter) {
   return success;
 }
 
-static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
+static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
                                                GValue *array_gvalue,
                                                const char *func_name,
                                                per_channel_func_t func) {
@@ -482,7 +482,7 @@ static gboolean gst_ebur128_fill_channel_array(Gstebur128 *filter,
   return success;
 }
 
-static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
+static gboolean gst_ebur128_validate_lib_return(GstEbur128 *filter,
                                                 const char *invocation,
                                                 const int return_value) {
   if (return_value != EBUR128_SUCCESS) {
@@ -496,7 +496,7 @@ static gboolean gst_ebur128_validate_lib_return(Gstebur128 *filter,
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
                                      const GValue *value, GParamSpec *pspec) {
-  Gstebur128 *filter = GST_EBUR128(object);
+  GstEbur128 *filter = GST_EBUR128(object);
 
   switch (prop_id) {
   case PROP_MOMENTARY:
@@ -544,7 +544,7 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
 
 static void gst_ebur128_get_property(GObject *object, guint prop_id,
                                      GValue *value, GParamSpec *pspec) {
-  Gstebur128 *filter = GST_EBUR128(object);
+  GstEbur128 *filter = GST_EBUR128(object);
 
   switch (prop_id) {
   case PROP_MOMENTARY:
@@ -585,7 +585,7 @@ static void gst_ebur128_get_property(GObject *object, guint prop_id,
 
 static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
                                      GstCaps *out) {
-  Gstebur128 *filter = GST_EBUR128(trans);
+  GstEbur128 *filter = GST_EBUR128(trans);
 
   GST_LOG_OBJECT(filter, "Received Caps in:  %" GST_PTR_FORMAT, in);
   GST_LOG_OBJECT(filter, "Received Caps out: %" GST_PTR_FORMAT, out);
@@ -608,7 +608,7 @@ static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
 static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
                                        GstEvent *event) {
   if (GST_EVENT_TYPE(event) == GST_EVENT_EOS) {
-    Gstebur128 *filter = GST_EBUR128(trans);
+    GstEbur128 *filter = GST_EBUR128(trans);
 
     if (filter->state) {
       GST_DEBUG_OBJECT(filter, "received EOS, emitting last Message");
@@ -620,7 +620,7 @@ static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
 }
 
 static gboolean gst_ebur128_start(GstBaseTransform *trans) {
-  Gstebur128 *filter = GST_EBUR128(trans);
+  GstEbur128 *filter = GST_EBUR128(trans);
 
   filter->start_ts = GST_CLOCK_TIME_NONE;
   filter->frames_since_last_mesage = 0;
@@ -630,7 +630,7 @@ static gboolean gst_ebur128_start(GstBaseTransform *trans) {
 
 static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                                               GstBuffer *buf) {
-  Gstebur128 *filter = GST_EBUR128(trans);
+  GstEbur128 *filter = GST_EBUR128(trans);
 
   // Map and Analyze buffer
   GstMapInfo map_info;
@@ -689,7 +689,7 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
 }
 
-static gboolean gst_ebur128_add_frames(Gstebur128 *filter,
+static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
                                        GstAudioFormat format, guint8 *data,
                                        gint num_frames) {
   gboolean success = TRUE;
