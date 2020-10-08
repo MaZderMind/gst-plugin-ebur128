@@ -260,7 +260,7 @@ static void gst_ebur128_finalize(GObject *object) {
 static gint gst_ebur128_calculate_libebur128_mode(Gstebur128 *filter) {
   gint mode = 0;
 
-  if (filter->momentary)
+  if (filter->momentary || filter->window > 0)
     mode |= EBUR128_MODE_M;
   if (filter->shortterm)
     mode |= EBUR128_MODE_S;
