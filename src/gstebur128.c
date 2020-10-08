@@ -639,7 +639,7 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
 
   GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&filter->audio_info);
   const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&filter->audio_info);
-  const gint num_frames = map_info.size / bytes_per_frame;
+  gint num_frames = map_info.size / bytes_per_frame;
   const gint channels = GST_AUDIO_INFO_CHANNELS(&filter->audio_info);
 
   // Manage Message-Timestamp
@@ -657,43 +657,37 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                    num_frames, bytes_per_frame, channels);
 
   gboolean success = TRUE;
-  if (filter->frames_since_last_mesage + num_frames <=
-      filter->interval_frames) {
-    // frames to fit, at once
 
-    success &=
-        gst_ebur128_add_frames(filter, format, map_info.data, num_frames);
-
-    filter->frames_since_last_mesage += num_frames;
-  } else {
-    // first half
-    const guint first_half =
+  guint8 *data_ptr = map_info.data;
+  while (num_frames > 0) {
+    const gint max_frames_to_process =
         filter->interval_frames - filter->frames_since_last_mesage;
-    const guint second_half = num_frames - first_half;
 
-    GST_DEBUG_OBJECT(filter,
-                     "Adding %u frames to already processed %u frames would "
-                     "exceed interval_frames=%u, processing in two "
-                     "halfs of %u and %u frames each",
-                     num_frames, filter->frames_since_last_mesage,
-                     filter->interval_frames, first_half, second_half);
+    const gint frames_to_process =
+        max_frames_to_process > num_frames ? num_frames : max_frames_to_process;
+
+    GST_WARNING_OBJECT(filter,
+                       "interval_frames=%d "
+                       "max_frames_to_process=%d "
+                       "num_frames=%d "
+                       "frames_to_process=%d "
+                       "frames_since_last_mesage=%d "
+                       "data_ptr=%p",
+                       filter->interval_frames, max_frames_to_process,
+                       num_frames, frames_to_process,
+                       filter->frames_since_last_mesage, data_ptr);
 
     success &=
-        gst_ebur128_add_frames(filter, format, map_info.data, first_half);
+        gst_ebur128_add_frames(filter, format, data_ptr, frames_to_process);
 
-    gst_ebur128_post_message(filter);
+    data_ptr += frames_to_process * bytes_per_frame;
+    num_frames -= frames_to_process;
+    filter->frames_since_last_mesage += frames_to_process;
 
-    // second half
-    guint8 *second_half_ptr = map_info.data + (first_half * bytes_per_frame);
-    success &=
-        gst_ebur128_add_frames(filter, format, second_half_ptr, second_half);
-
-    filter->frames_since_last_mesage = second_half;
-  }
-
-  if (filter->frames_since_last_mesage >= filter->interval_frames) {
-    gst_ebur128_post_message(filter);
-    filter->frames_since_last_mesage = 0;
+    if (filter->frames_since_last_mesage >= filter->interval_frames) {
+      gst_ebur128_post_message(filter);
+      filter->frames_since_last_mesage = 0;
+    }
   }
 
   gst_buffer_unmap(buf, &map_info);
