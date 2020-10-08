@@ -37,6 +37,7 @@ GAUGE_W = 20
 
 SCALE_FROM = +18
 SCALE_TO = -36
+SCALE_NTH = 1
 
 TARGET = -23
 SCALE = Scale.RELATIVE
@@ -126,7 +127,7 @@ def draw(ctx, w, h):
     ctx.select_font_face('monospace', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
     ctx.set_font_size(SCALE_FONT_SIZE)
     ctx.set_source_rgb(*COLOR_SCALE_TEXT)
-    for scale_index in range(0, num_scales):
+    for scale_index in range(0, num_scales, SCALE_NTH):
         scale_text = generate_scale_text(scale_index)
         extends = ctx.text_extents(scale_text)
 
@@ -204,7 +205,7 @@ def draw(ctx, w, h):
 
     # scale lines
     ctx.set_source_rgba(*COLOR_SCALE_LINES)
-    for scale_index in range(0, num_scales):
+    for scale_index in range(0, num_scales, SCALE_NTH):
         gauge_line_y = gauge_y + math.ceil(scale_index * distance + distance)
         ctx.move_to(gauge_x + 1, gauge_line_y + .5)
         ctx.line_to(gauge_x + gauge_w - 1, gauge_line_y + .5)
