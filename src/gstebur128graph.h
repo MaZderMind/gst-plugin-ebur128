@@ -1,7 +1,6 @@
 #ifndef __GST_EBUR128GRAPH_H__
 #define __GST_EBUR128GRAPH_H__
 
-#include "plugin.h"
 #include <ebur128.h>
 #include <gst/audio/audio.h>
 #include <gst/base/gstbasetransform.h>

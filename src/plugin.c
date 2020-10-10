@@ -1,5 +1,3 @@
-#include "plugin.h"
-
 #include "gstebur128.h"
 #include "gstebur128graph.h"
 
@@ -12,10 +10,6 @@
  * register the element factories and other features
  */
 static gboolean ebur128_plugin_init(GstPlugin *ebur128) {
-  /* debug category for fltering log messages
-   */
-  GST_DEBUG_CATEGORY_INIT(gst_ebur128_debug, "ebur128", 0, "EBU-R 128 Plugin");
-
   gboolean success = TRUE;
   success &=
       gst_element_register(ebur128, "ebur128", GST_RANK_NONE, GST_TYPE_EBUR128);

@@ -26,13 +26,13 @@ run-tests: builddir
 	cd builddir && meson test -v
 
 run-ebur128:
-	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:0 gst-launch-1.0 -m \
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
 	  filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
       ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true interval=100000000 ! \
 	  autoaudiosink
 
 run-ebur128-with-seek:
-	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:0 gst-launch-1.0 -m \
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
 		filesrc location=example-audio/music.mp3 ! \
 		mpegaudioparse ! mpg123audiodec ! \
 		ebur128 ! \

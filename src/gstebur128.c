@@ -28,6 +28,7 @@
 
 #include "gstebur128.h"
 
+GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
 #define GST_CAT_DEFAULT gst_ebur128_debug
 
 /* Filter signals and args */
@@ -118,6 +119,8 @@ static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
 
 /* initialize the ebur128's class */
 static void gst_ebur128_class_init(GstEbur128Class *klass) {
+  GST_DEBUG_CATEGORY_INIT(gst_ebur128_debug, "ebur128", 0, "ebur128 Element");
+
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
   GstBaseTransformClass *trans_class = GST_BASE_TRANSFORM_CLASS(klass);
