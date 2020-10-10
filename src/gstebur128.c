@@ -56,7 +56,7 @@ enum {
   "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(              \
       F32) ", " GST_AUDIO_NE(F64) " }"
 
-#define SUPPORTED_AUDIO_CHANNELS "(int) {1, 2, 5 }"
+#define SUPPORTED_AUDIO_CHANNELS "(int) { 1, 2, 5 }"
 
 #define SUPPORTED_CAPS_STRING                                                  \
   "audio/x-raw, "                                                              \
@@ -226,11 +226,6 @@ static void gst_ebur128_class_init(GstEbur128Class *klass) {
   trans_class->passthrough_on_same_caps = TRUE;
 }
 
-/* initialize the new element
- * instantiate pads and add them to element
- * set pad calback functions
- * initialize instance structure
- */
 static void gst_ebur128_init(GstEbur128 *filter) {
   // configure base-transform class
   gst_base_transform_set_gap_aware(GST_BASE_TRANSFORM(filter), TRUE);
