@@ -45,7 +45,7 @@ run-ebur128-with-seek:
 run-ebur128graph:
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph ! video/x-raw,format=RGB,width=640,height=480,framerate=30/1 ! videoconvert ! ximagesink \
+		t. ! queue ! ebur128graph ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 
 .PHONY: build inspect inspect-ebur128 run-ebur128 format
