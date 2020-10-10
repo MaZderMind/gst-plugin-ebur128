@@ -297,6 +297,111 @@ GST_START_TEST(test_timestamps) {
 }
 GST_END_TEST;
 
+GST_START_TEST(test_per_channel_array) {
+  setup_element(S16_CAPS_STRING);
+  g_object_set(element,
+               // interval
+               "interval", 100 * GST_MSECOND,
+
+               // enable sample-peak
+               "sample-peak", TRUE,
+
+               // enable true-peak
+               "true-peak", TRUE,
+
+               // sentinel
+               NULL);
+
+  GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  GstMessage *message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  const GstStructure *structure = gst_message_get_structure(message);
+
+  const GValue *sample_peak;
+  sample_peak = gst_structure_get_value(structure, "sample-peak");
+  fail_unless(G_VALUE_TYPE(sample_peak) == G_TYPE_VALUE_ARRAY);
+  const GValueArray *sample_peak_channels = g_value_get_boxed(sample_peak);
+  fail_unless(sample_peak_channels->n_values == 2);
+
+  const GValue *true_peak;
+  true_peak = gst_structure_get_value(structure, "sample-peak");
+  fail_unless(G_VALUE_TYPE(true_peak) == G_TYPE_VALUE_ARRAY);
+  const GValueArray *true_peak_channels = g_value_get_boxed(sample_peak);
+  fail_unless(true_peak_channels->n_values == 2);
+
+  gst_message_unref(message);
+  cleanup_element();
+}
+GST_END_TEST;
+
+GST_START_TEST(test_mode_change) {
+  GstBuffer *inbuffer;
+  GstMessage *message;
+  const GstStructure *structure;
+
+  setup_element(S16_CAPS_STRING);
+
+  // initialize with only momentary enabled
+  g_object_set(element,
+               // interval
+               "interval", 100 * GST_MSECOND,
+
+               // enable momentary
+               "momentary", TRUE,
+
+               // sentinel
+               NULL);
+
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  structure = gst_message_get_structure(message);
+
+  fail_unless(gst_structure_n_fields(structure) == 4);
+  fail_unless(gst_structure_has_field(structure, "timestamp"));
+  fail_unless(gst_structure_has_field(structure, "stream-time"));
+  fail_unless(gst_structure_has_field(structure, "running-time"));
+  fail_unless(gst_structure_has_field(structure, "momentary"));
+  gst_message_unref(message);
+
+  // also enable sample-peak and window
+  g_object_set(element,
+               // interval
+               "interval", 100 * GST_MSECOND,
+
+               // enable momentary
+               "momentary", TRUE,
+
+               // enable window
+               "window", 200,
+
+               // enable sample-peak
+               "sample-peak", TRUE,
+
+               // sentinel
+               NULL);
+
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  gst_pad_push(mysrcpad, inbuffer);
+
+  message = gst_bus_poll(bus, GST_MESSAGE_ELEMENT, -1);
+  structure = gst_message_get_structure(message);
+
+  fail_unless(gst_structure_n_fields(structure) == 6);
+  fail_unless(gst_structure_has_field(structure, "timestamp"));
+  fail_unless(gst_structure_has_field(structure, "stream-time"));
+  fail_unless(gst_structure_has_field(structure, "running-time"));
+  fail_unless(gst_structure_has_field(structure, "momentary"));
+  fail_unless(gst_structure_has_field(structure, "window"));
+  fail_unless(gst_structure_has_field(structure, "sample-peak"));
+  gst_message_unref(message);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
 static void test_accepts(const char *caps_str) {
   setup_element(caps_str);
   g_object_set(element, "interval", 1000 * GST_MSECOND, NULL);
@@ -583,6 +688,8 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_general, test_emits_message);
   tcase_add_test(tc_general, test_passess_buffer_unchaged);
   tcase_add_test(tc_general, test_timestamps);
+  tcase_add_test(tc_general, test_per_channel_array);
+  tcase_add_test(tc_general, test_mode_change);
 
   TCase *tc_audio_formats = tcase_create("audio_formats");
   suite_add_tcase(s, tc_audio_formats);

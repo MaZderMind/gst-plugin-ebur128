@@ -310,10 +310,11 @@ static void gst_ebur128_reinit_libebur128_if_mode_changed(GstEbur128 *filter) {
   gint new_mode = gst_ebur128_calculate_libebur128_mode(filter);
   gint current_mode = filter->state->mode;
   if (current_mode != new_mode) {
-    GST_LOG_OBJECT(filter,
-                   "libebur128 Mode has changed from %u to %u, Destroying and "
-                   "Re-Initializing libebur128 state",
-                   current_mode, new_mode);
+    GST_LOG_OBJECT(
+        filter,
+        "libebur128 Mode has changed from 0x%x to 0x%x, Destroying and "
+        "Re-Initializing libebur128 state",
+        current_mode, new_mode);
     gst_ebur128_destroy_libebur128(filter);
     gst_ebur128_init_libebur128(filter);
   }
