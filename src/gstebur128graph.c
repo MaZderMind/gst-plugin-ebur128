@@ -65,7 +65,7 @@ static GstStaticPadTemplate src_template_factory = GST_STATIC_PAD_TEMPLATE(
     "src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_VIDEO_CAPS_STRING));
 
 #define gst_ebur128graph_parent_class parent_class
-G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_AUDIO_VISUALIZER);
 
 /* forward declarations */
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
@@ -75,6 +75,13 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id,
                                           GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_finalize(GObject *object);
 
+static gboolean
+gst_ebur128graph_setup (GstAudioVisualizer * visualizer);
+
+static gboolean
+gst_ebur128graph_render (GstAudioVisualizer * visualizer, GstBuffer * audio,
+    GstVideoFrame * video);
+
 /* GObject vmethod implementations */
 
 /* initialize the ebur128's class */
@@ -83,10 +90,15 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
+  GstAudioVisualizerClass *audio_visualizer = (GstAudioVisualizerClass *) klass;
 
   gobject_class->set_property = gst_ebur128graph_set_property;
   gobject_class->get_property = gst_ebur128graph_get_property;
   gobject_class->finalize = gst_ebur128graph_finalize;
+
+  audio_visualizer->setup = GST_DEBUG_FUNCPTR (gst_ebur128graph_setup);
+  audio_visualizer->render = GST_DEBUG_FUNCPTR (gst_ebur128graph_render);
+
 
   gst_element_class_add_static_pad_template(element_class,
                                             &sink_template_factory);
@@ -104,13 +116,13 @@ static void gst_ebur128graph_init(GstEbur128Graph *filter) {
 }
 
 static void gst_ebur128graph_finalize(GObject *object) {
-  //GstEbur128Graph *filter = GST_EBUR128GRAPH(object);
+  //GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
 }
 
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
                                           const GValue *value,
                                           GParamSpec *pspec) {
-  //GstEbur128Graph *filter = GST_EBUR128GRAPH(object);
+  //GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
 
   switch (prop_id) {
   default:
@@ -121,11 +133,27 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
 
 static void gst_ebur128graph_get_property(GObject *object, guint prop_id,
                                           GValue *value, GParamSpec *pspec) {
-  //GstEbur128Graph *filter = GST_EBUR128GRAPH(object);
+  //GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
 
   switch (prop_id) {
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
   }
+}
+
+static gboolean
+gst_ebur128graph_setup (GstAudioVisualizer * visualizer) {
+  //GstEbur128Graph *graph = GST_EBUR128GRAPH (visualizer);
+
+  return TRUE;
+}
+
+static gboolean
+gst_ebur128graph_render (GstAudioVisualizer * visualizer, GstBuffer * audio,
+    GstVideoFrame * video)
+{
+  //GstEbur128Graph *graph = GST_EBUR128GRAPH (visualizer);
+
+  return TRUE;
 }
