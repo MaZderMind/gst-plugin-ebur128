@@ -23,9 +23,6 @@
  * everywhere */
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
-#include <gst/audio/audio.h>
-#include <gst/gst.h>
-
 #include "gstebur128.h"
 
 GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
