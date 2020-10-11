@@ -15,6 +15,7 @@ gstvideo_dep = dependency('gstreamer-video-1.0', fallback : ['gst-plugins-base',
 gstpbutils_dep = dependency('gstreamer-pbutils-1.0', fallback : ['gst-plugins-base', 'pbutils_dep'])
 
 libebur128_dep = dependency('libebur128')
+cairo_dep = dependency('cairo')
 
 plugin_c_args = ['-DHAVE_CONFIG_H']
 
@@ -42,7 +43,9 @@ ebur128 = library('gstebur128',
     gstaudio_dep,
     gstvideo_dep,
     gstpbutils_dep,
-    libebur128_dep
+
+    libebur128_dep,
+    cairo_dep
   ],
   install : true,
   install_dir : plugins_install_dir,
