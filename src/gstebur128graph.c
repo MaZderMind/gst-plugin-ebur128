@@ -76,7 +76,12 @@ static void gst_ebur128graph_finalize(GObject *object);
 
 static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer);
 static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph);
-static void gst_ebur128graph_render_background(GstEbur128Graph *graph);
+static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
+                                               cairo_t *ctx, gint width,
+                                               gint height);
+static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph,
+                                               cairo_t *ctx, gint width,
+                                               gint height);
 
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
                                         GstBuffer *audio, GstVideoFrame *video);
@@ -136,29 +141,30 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id,
   }
 }
 
+static cairo_format_t
+gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) {
+  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  switch (video_info->finfo->format) {
+  case GST_VIDEO_FORMAT_BGRx:
+    return CAIRO_FORMAT_RGB24;
+
+  case GST_VIDEO_FORMAT_BGRA:
+    return CAIRO_FORMAT_ARGB32;
+
+  default:
+    GST_ERROR_OBJECT(graph, "Unhandled Video-Format: %s",
+                     video_info->finfo->name);
+    return CAIRO_FORMAT_INVALID;
+  }
+}
+
 static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
 
   GstVideoInfo *video_info = &visualizer->vinfo;
   gint width = video_info->width;
   gint height = video_info->height;
-
-  cairo_format_t cairo_format;
-
-  switch (video_info->finfo->format) {
-  case GST_VIDEO_FORMAT_BGRx:
-    cairo_format = CAIRO_FORMAT_RGB24;
-    break;
-
-  case GST_VIDEO_FORMAT_BGRA:
-    cairo_format = CAIRO_FORMAT_ARGB32;
-    break;
-
-  default:
-    GST_ERROR_OBJECT(visualizer, "Unhandled Video-Format: %s",
-                     video_info->finfo->name);
-    return FALSE;
-  }
+  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
 
   gst_ebur128graph_destroy_cairo_state(graph);
 
@@ -169,7 +175,9 @@ static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   graph->background_image =
       cairo_image_surface_create(cairo_format, width, height);
   graph->background_context = cairo_create(graph->background_image);
-  gst_ebur128graph_render_background(graph);
+
+  gst_ebur128graph_render_background(graph, graph->background_context, width,
+                                     height);
 
   return TRUE;
 }
@@ -191,24 +199,61 @@ static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph) {
   }
 }
 
-static void gst_ebur128graph_render_background(GstEbur128Graph *graph) {
-  cairo_t *ctx = graph->background_context;
+static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
+                                        GstBuffer *audio,
+                                        GstVideoFrame *video) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
+  GstVideoInfo *video_info = &visualizer->vinfo;
+  gint width = video_info->width;
+  gint height = video_info->height;
 
+  GST_INFO_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height,
+                  visualizer->vinfo.finfo->name);
+
+  // copy background over
+  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
+  // cairo_fill) but because we *know* that both image surfaces use the same
+  // format we can use memcpy which is probably quite a bit faster and we're on
+  // the hot path here.
+  memcpy(video->map->data,
+         cairo_image_surface_get_data(graph->background_image),
+         video->map->size);
+
+  // create cairo image-surcface directly on the allocated buffer
+  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
+  cairo_surface_t *image = cairo_image_surface_create_for_data(
+      video->map->data, cairo_format, width, height, video_info->stride[0]);
+  cairo_t *ctx = cairo_create(image);
+
+  gst_ebur128graph_render_foreground(graph, ctx, width, height);
+
+  cairo_destroy(ctx);
+  cairo_surface_destroy(image);
+
+  return TRUE;
+}
+
+/**
+ * Called when the Size of the Target-Surface changed. Draws all background
+ * elements that do not change dynamicly
+ */
+static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
+                                               cairo_t *ctx, gint width,
+                                               gint height) {
   cairo_set_source_rgba(ctx, 1., 0., 0., .75);
   cairo_rectangle(ctx, 0., 0, 100., 100.);
   cairo_fill(ctx);
 }
 
-static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
-                                        GstBuffer *audio,
-                                        GstVideoFrame *video) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
-
-  GST_INFO_OBJECT(graph, "Render w=%d h=%d, fmt=%s", visualizer->vinfo.width,
-                  visualizer->vinfo.height, visualizer->vinfo.finfo->name);
-  memcpy(video->map->data,
-         cairo_image_surface_get_data(graph->background_image),
-         video->map->size);
-
-  return TRUE;
+/**
+ * Called for every Frame. The Background has already be copied over. Draws all
+ * foreground elements that do change dynamicly.
+ */
+static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph,
+                                               cairo_t *ctx, gint width,
+                                               gint height) {
+  cairo_set_source_rgb(ctx, 0, 1, 0);
+  cairo_move_to(ctx, 0, 0);
+  cairo_line_to(ctx, width, height);
+  cairo_stroke(ctx);
 }
