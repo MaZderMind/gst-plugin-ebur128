@@ -76,6 +76,8 @@ static void gst_ebur128graph_finalize(GObject *object);
 
 static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer);
 static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph);
+static void gst_ebur128graph_setup_cairo_state(GstEbur128Graph *graph);
+static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph);
 static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height);
@@ -116,7 +118,24 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
       "Peter Körner <peter@mazdermind.de>");
 }
 
-static void gst_ebur128graph_init(GstEbur128Graph *filter) {}
+static void gst_ebur128graph_init(GstEbur128Graph *graph) {
+  // colors
+  graph->properties.background_color = 0xFF000000;
+  graph->properties.border_color = 0xFF00FF00;
+
+  // sizes
+  graph->properties.gutter = 5;
+  graph->properties.scale_w = 20;
+  graph->properties.gauge_w = 20;
+
+  // scale
+  graph->properties.scale_from = +18;
+  graph->properties.scale_to = -36;
+  graph->properties.scale_show_every = 1;
+
+  // font
+  graph->properties.font_size = 12.;
+}
 
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
                                           const GValue *value,
@@ -161,30 +180,23 @@ gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) {
 static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
 
-  GstVideoInfo *video_info = &visualizer->vinfo;
-  gint width = video_info->width;
-  gint height = video_info->height;
-  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
-
+  // cleanup existing state
   gst_ebur128graph_destroy_cairo_state(graph);
 
-  GST_INFO_OBJECT(graph,
-                  "Creating 'background' Cairo-Surface & Context width=%d "
-                  "height=%d format=%s",
-                  width, height, video_info->finfo->name);
-  graph->background_image =
-      cairo_image_surface_create(cairo_format, width, height);
-  graph->background_context = cairo_create(graph->background_image);
+  // initialize cairo
+  gst_ebur128graph_setup_cairo_state(graph);
 
+  // re-calculate all positions
+  gst_ebur128graph_calculate_positions(graph);
+
+  // render background
+  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  gint width = video_info->width;
+  gint height = video_info->height;
   gst_ebur128graph_render_background(graph, graph->background_context, width,
                                      height);
 
   return TRUE;
-}
-
-static void gst_ebur128graph_finalize(GObject *object) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
-  gst_ebur128graph_destroy_cairo_state(graph);
 }
 
 static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph) {
@@ -197,6 +209,69 @@ static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph) {
     GST_INFO_OBJECT(graph, "Destroying existing 'background' Cairo-Surface");
     cairo_surface_destroy(graph->background_image);
   }
+}
+
+static void gst_ebur128graph_setup_cairo_state(GstEbur128Graph *graph) {
+  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  gint width = video_info->width;
+  gint height = video_info->height;
+
+  GST_INFO_OBJECT(graph,
+                  "Creating 'background' Cairo-Surface & Context width=%d "
+                  "height=%d format=%s",
+                  width, height, video_info->finfo->name);
+
+  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
+  graph->background_image =
+      cairo_image_surface_create(cairo_format, width, height);
+  graph->background_context = cairo_create(graph->background_image);
+}
+
+static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
+  cairo_t *ctx = graph->background_context;
+  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  gint width = video_info->width;
+  gint height = video_info->height;
+
+  gint gutter = graph->properties.gutter;
+
+  cairo_text_extents_t extents;
+  cairo_text_extents(ctx, "W", &extents);
+  double font_height = extents.height;
+
+  graph->positions.header.w =
+      width - gutter - graph->properties.scale_w - gutter - gutter;
+  graph->positions.header.h = font_height;
+  graph->positions.header.x = gutter + graph->properties.scale_w + gutter;
+  graph->positions.header.y = gutter;
+
+  graph->positions.scale.w = graph->properties.scale_w;
+  graph->positions.scale.h =
+      height - graph->positions.header.h - gutter - gutter - gutter;
+  graph->positions.scale.x = gutter;
+  graph->positions.scale.y = gutter + graph->positions.header.h + gutter;
+
+  graph->positions.gauge.w = graph->properties.gauge_w;
+  graph->positions.gauge.h = graph->positions.scale.h;
+  graph->positions.gauge.x = width - graph->positions.gauge.w - gutter;
+  graph->positions.gauge.y = graph->positions.scale.y;
+
+  graph->positions.graph.w = width - gutter - graph->positions.scale.w -
+                             gutter - gutter - graph->positions.gauge.w -
+                             gutter;
+  graph->positions.graph.h = graph->positions.scale.h;
+  graph->positions.graph.x = gutter + graph->positions.scale.w + gutter;
+  graph->positions.graph.y = graph->positions.scale.y;
+
+  graph->positions.num_scales =
+      -(graph->properties.scale_to - graph->properties.scale_to);
+  graph->positions.scale_spacing =
+      (double)graph->positions.scale.h / graph->positions.num_scales;
+}
+
+static void gst_ebur128graph_finalize(GObject *object) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
+  gst_ebur128graph_destroy_cairo_state(graph);
 }
 
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
@@ -234,15 +309,63 @@ static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
 }
 
 /**
+ * ARGB is kind of a standard when it comes to specifying colors in GStreamer
+ * It is also used in the videotestsrc element and some others
+ */
+static void cairo_set_source_rgba_from_argb_int(cairo_t *ctx, int argb_color) {
+  double a = (double)(argb_color >> 24 & 0xFF) / 255.;
+  double r = (double)(argb_color >> 16 & 0xFF) / 255.;
+  double g = (double)(argb_color >> 8 & 0xFF) / 255.;
+  double b = (double)(argb_color & 0xFF) / 255.;
+  cairo_set_source_rgba(ctx, r, g, b, a);
+}
+
+/**
  * Called when the Size of the Target-Surface changed. Draws all background
  * elements that do not change dynamicly
  */
 static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height) {
-  cairo_set_source_rgba(ctx, 1., 0., 0., .75);
-  cairo_rectangle(ctx, 0., 0, 100., 100.);
+
+  // font & stroke
+  cairo_set_line_width(ctx, 1.0);
+  cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL,
+                         CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_font_size(ctx, graph->properties.font_size);
+
+  // background
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.background_color);
+  cairo_rectangle(ctx, 0, 0, width, height);
   cairo_fill(ctx);
+
+  // header
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.border_color);
+  cairo_rectangle(ctx, graph->positions.header.x + .5,
+                  graph->positions.header.y + .5, graph->positions.header.w - 1,
+                  graph->positions.header.h - 1);
+  cairo_stroke(ctx);
+
+  // scale
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.border_color);
+  cairo_rectangle(ctx, graph->positions.scale.x + .5,
+                  graph->positions.scale.y + .5, graph->positions.scale.w - 1,
+                  graph->positions.scale.h - 1);
+  cairo_stroke(ctx);
+
+  // graph
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.border_color);
+  cairo_rectangle(ctx, graph->positions.graph.x + .5,
+                  graph->positions.graph.y + .5, graph->positions.graph.w - 1,
+                  graph->positions.graph.h - 1);
+  cairo_stroke(ctx);
+
+  // gauge
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.border_color);
+  cairo_rectangle(ctx, graph->positions.gauge.x + .5,
+                  graph->positions.gauge.y + .5, graph->positions.gauge.w - 1,
+                  graph->positions.gauge.h - 1);
+  cairo_stroke(ctx);
 }
 
 /**
@@ -252,8 +375,5 @@ static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
 static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height) {
-  cairo_set_source_rgb(ctx, 0, 1, 0);
-  cairo_move_to(ctx, 0, 0);
-  cairo_line_to(ctx, width, height);
-  cairo_stroke(ctx);
+  // header
 }
