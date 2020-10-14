@@ -26,6 +26,11 @@ struct _GstEbur128Position {
   gint x, y, w, h;
 };
 
+typedef enum {
+  GST_EBUR128_SCALE_MODE_RELATIVE,
+  GST_EBUR128_SCALE_MODE_ABSOLUTE
+} GstEbur128ScaleMode;
+
 typedef struct _GstEbur128Positions GstEbur128Positions;
 struct _GstEbur128Positions {
   GstEbur128Position header;
@@ -35,13 +40,19 @@ struct _GstEbur128Positions {
 
   gint num_scales;
   double scale_spacing;
+  gint scale_show_every;
 };
 
 typedef struct _GstEbur128Properties GstEbur128Properties;
 struct _GstEbur128Properties {
   // colors
-  gint background_color;
-  gint border_color;
+  gint color_background;
+  gint color_border;
+  gint color_scale;
+
+  gint color_too_loud;
+  gint color_loudness_ok;
+  gint color_not_loud_enough;
 
   // sizes
   gint gutter;
@@ -51,10 +62,12 @@ struct _GstEbur128Properties {
   // scale
   gint scale_from;
   gint scale_to;
-  gint scale_show_every;
+  GstEbur128ScaleMode scale_mode;
+  gint scale_target;
 
   // font
-  double font_size;
+  double font_size_header;
+  double font_size_scale;
 };
 
 typedef struct _GstEbur128Graph GstEbur128Graph;

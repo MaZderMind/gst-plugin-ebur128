@@ -17,6 +17,9 @@ gstpbutils_dep = dependency('gstreamer-pbutils-1.0', fallback : ['gst-plugins-ba
 libebur128_dep = dependency('libebur128')
 cairo_dep = dependency('cairo')
 
+cc = meson.get_compiler('c')
+m_dep = cc.find_library('m', required : false)
+
 plugin_c_args = ['-DHAVE_CONFIG_H']
 
 cdata = configuration_data()
@@ -45,7 +48,9 @@ ebur128 = library('gstebur128',
     gstpbutils_dep,
 
     libebur128_dep,
-    cairo_dep
+    cairo_dep,
+
+    m_dep
   ],
   install : true,
   install_dir : plugins_install_dir,
