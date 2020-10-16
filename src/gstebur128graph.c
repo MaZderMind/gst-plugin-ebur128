@@ -128,6 +128,7 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.color_background = 0xFF000000;
   graph->properties.color_border = 0xFF00CC00;
   graph->properties.color_scale = 0xFF009999;
+  graph->properties.color_scale_lines = 0x4CFFFFFF;
 
   graph->properties.color_too_loud = 0xFFDB6666;
   graph->properties.color_loudness_ok = 0xFF66DB66;
@@ -359,7 +360,7 @@ static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height) {
 
-  // stroke
+  // border stroke
   cairo_set_line_width(ctx, 1.0);
 
   // background
@@ -486,4 +487,28 @@ static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height) {
   // header
+
+  // data
+
+  // scale lines
+  cairo_set_line_width(ctx, 1.0);
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_scale_lines);
+
+  for (gint scale_index = 0; scale_index < graph->positions.num_scales;
+       scale_index++) {
+    double y = graph->positions.gauge.y +
+               ceil(scale_index * graph->positions.scale_spacing +
+                    graph->positions.scale_spacing) +
+               .5;
+
+    cairo_move_to(ctx, graph->positions.gauge.x + 1, y);
+    cairo_line_to(ctx, graph->positions.gauge.x + graph->positions.gauge.w - 1,
+                  y);
+
+    cairo_move_to(ctx, graph->positions.graph.x + 1, y);
+    cairo_line_to(ctx, graph->positions.graph.x + graph->positions.graph.w - 1,
+                  y);
+  }
+
+  cairo_stroke(ctx);
 }

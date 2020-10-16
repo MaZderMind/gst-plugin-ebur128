@@ -49,6 +49,7 @@ struct _GstEbur128Properties {
   gint color_background;
   gint color_border;
   gint color_scale;
+  gint color_scale_lines;
 
   gint color_too_loud;
   gint color_loudness_ok;
