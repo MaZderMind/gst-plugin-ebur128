@@ -306,10 +306,28 @@ static void gst_ebur128graph_finalize(GObject *object) {
   gst_ebur128graph_destroy_cairo_state(graph);
 }
 
+static void gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph,
+                                              GstBuffer *audio) {
+  // Map and Analyze buffer
+  GstMapInfo map_info;
+  gst_buffer_map(audio, &map_info, GST_MAP_READ);
+
+  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_visualizer.ainfo);
+  const gint bytes_per_frame =
+      GST_AUDIO_INFO_BPF(&graph->audio_visualizer.ainfo);
+  gint num_frames = map_info.size / bytes_per_frame;
+
+  GST_LOG_OBJECT(graph, "Adding %d frames ", num_frames);
+
+
+}
+
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
                                         GstBuffer *audio,
                                         GstVideoFrame *video) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
+  gst_ebur128graph_add_audio_frames(graph, audio);
+
   GstVideoInfo *video_info = &visualizer->vinfo;
   gint width = video_info->width;
   gint height = video_info->height;
