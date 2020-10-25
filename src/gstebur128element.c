@@ -53,43 +53,36 @@ enum {
  * describe the real formats here.
  */
 
-#define SUPPORTED_AUDIO_FORMATS                                                \
-  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(              \
-      F32) ", " GST_AUDIO_NE(F64) " }"
+#define SUPPORTED_AUDIO_FORMATS                                                                                        \
+  "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(F32) ", " GST_AUDIO_NE(F64) " }"
 
 #define SUPPORTED_AUDIO_CHANNELS "(int) { 1, 2, 5 }"
 
-#define SUPPORTED_CAPS_STRING                                                  \
-  "audio/x-raw, "                                                              \
-  "format = (string) " SUPPORTED_AUDIO_FORMATS ", "                            \
-  "rate = " GST_AUDIO_RATE_RANGE ", "                                          \
-  "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                  \
+#define SUPPORTED_CAPS_STRING                                                                                          \
+  "audio/x-raw, "                                                                                                      \
+  "format = (string) " SUPPORTED_AUDIO_FORMATS ", "                                                                    \
+  "rate = " GST_AUDIO_RATE_RANGE ", "                                                                                  \
+  "channels = " SUPPORTED_AUDIO_CHANNELS ", "                                                                          \
   "layout = (string) interleaved "
 
 static GstStaticPadTemplate sink_template_factory =
-    GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-                            GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
+    GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
 
-static GstStaticPadTemplate src_template_factory = GST_STATIC_PAD_TEMPLATE(
-    "src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
+static GstStaticPadTemplate src_template_factory =
+    GST_STATIC_PAD_TEMPLATE("src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_CAPS_STRING));
 
 #define gst_ebur128_parent_class parent_class
 G_DEFINE_TYPE(GstEbur128, gst_ebur128, GST_TYPE_BASE_TRANSFORM);
 
 /* forward declarations */
-static void gst_ebur128_set_property(GObject *object, guint prop_id,
-                                     const GValue *value, GParamSpec *pspec);
-static void gst_ebur128_get_property(GObject *object, guint prop_id,
-                                     GValue *value, GParamSpec *pspec);
+static void gst_ebur128_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec);
+static void gst_ebur128_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec);
 static void gst_ebur128_finalize(GObject *object);
 
-static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
-                                     GstCaps *out);
+static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in, GstCaps *out);
 static gboolean gst_ebur128_start(GstBaseTransform *trans);
-static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
-                                       GstEvent *event);
-static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
-                                              GstBuffer *in);
+static gboolean gst_ebur128_sink_event(GstBaseTransform *trans, GstEvent *event);
+static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans, GstBuffer *in);
 
 static gint gst_ebur128_calculate_libebur128_mode(GstEbur128 *filter);
 static void gst_ebur128_init_libebur128(GstEbur128 *filter);
@@ -97,12 +90,9 @@ static void gst_ebur128_reinit_libebur128_if_mode_changed(GstEbur128 *filter);
 static void gst_ebur128_destroy_libebur128(GstEbur128 *filter);
 static void gst_ebur128_recalc_interval_frames(GstEbur128 *filter);
 static gboolean gst_ebur128_post_message(GstEbur128 *filter);
-typedef int (*per_channel_func_t)(ebur128_state *st,
-                                  unsigned int channel_number, double *out);
+typedef int (*per_channel_func_t)(ebur128_state *st, unsigned int channel_number, double *out);
 
-static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
-                                               GValue *array_gvalue,
-                                               const char *func_name,
+static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter, GValue *array_gvalue, const char *func_name,
                                                per_channel_func_t func);
 
 /* GObject vmethod implementations */
@@ -120,94 +110,76 @@ static void gst_ebur128_class_init(GstEbur128Class *klass) {
   gobject_class->finalize = gst_ebur128_finalize;
 
   // configure gobject properties
-  g_object_class_install_property(
-      gobject_class, PROP_MOMENTARY,
-      g_param_spec_boolean("momentary", "Momentary Loudness Metering",
-                           "Enable Momentary Loudness Metering",
-                           /* default */ TRUE,
-                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property(gobject_class, PROP_MOMENTARY,
+                                  g_param_spec_boolean("momentary", "Momentary Loudness Metering",
+                                                       "Enable Momentary Loudness Metering",
+                                                       /* default */ TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_SHORTTERM,
-      g_param_spec_boolean("shortterm", "Shortterm Loudness Metering",
-                           "Enable Shortterm Loudness Metering",
-                           /* default */ FALSE,
-                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_boolean("shortterm", "Shortterm Loudness Metering", "Enable Shortterm Loudness Metering",
+                           /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-      gobject_class, PROP_GLOBAL,
-      g_param_spec_boolean(
-          "global", "Integrated (Global) Loudness Metering",
-          "Enable Integrated (Global) Loudness Loudness Metering",
-          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property(gobject_class, PROP_GLOBAL,
+                                  g_param_spec_boolean("global", "Integrated (Global) Loudness Metering",
+                                                       "Enable Integrated (Global) Loudness Loudness Metering",
+                                                       /* default */ FALSE,
+                                                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-      gobject_class, PROP_WINDOW,
-      g_param_spec_ulong("window", "Window Loudness Metering",
-                         "Enable Window Loudness Metering by setting a "
-                         "non-zero Window-Size in ms",
-                         /* min */ 0,
-                         /* max */ ULONG_MAX,
-                         /* default */ 0,
-                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property(gobject_class, PROP_WINDOW,
+                                  g_param_spec_ulong("window", "Window Loudness Metering",
+                                                     "Enable Window Loudness Metering by setting a "
+                                                     "non-zero Window-Size in ms",
+                                                     /* min */ 0,
+                                                     /* max */ ULONG_MAX,
+                                                     /* default */ 0, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_RANGE,
-      g_param_spec_boolean(
-          "range", "Loudness Range Metering", "Enable Loudness Range Metering",
-          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_boolean("range", "Loudness Range Metering", "Enable Loudness Range Metering",
+                           /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_SAMPLE_PEAK,
-      g_param_spec_boolean(
-          "sample-peak", "Sample-Peak Metering", "Enable Sample-Peak Metering",
-          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_boolean("sample-peak", "Sample-Peak Metering", "Enable Sample-Peak Metering",
+                           /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-      gobject_class, PROP_TRUE_PEAK,
-      g_param_spec_boolean(
-          "true-peak", "True-Peak Metering", "Enable True-Peak Metering",
-          /* default */ FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property(gobject_class, PROP_TRUE_PEAK,
+                                  g_param_spec_boolean("true-peak", "True-Peak Metering", "Enable True-Peak Metering",
+                                                       /* default */ FALSE,
+                                                       G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  g_object_class_install_property(
-      gobject_class, PROP_MAX_HISTORY,
-      g_param_spec_ulong(
-          "max-history", "Maximum History Size",
-          "Set the maximum history that will be stored for loudness "
-          "integration. More history provides more accurate results, "
-          "but requires more resources. "
-          "Applies to Range Metering and Global Loudness Metering. "
-          "Default is ULONG_MAX (at least ~50 days).",
-          /* min */ 0,
-          /* max */ ULONG_MAX,
-          /* default */ ULONG_MAX, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property(gobject_class, PROP_MAX_HISTORY,
+                                  g_param_spec_ulong("max-history", "Maximum History Size",
+                                                     "Set the maximum history that will be stored for loudness "
+                                                     "integration. More history provides more accurate results, "
+                                                     "but requires more resources. "
+                                                     "Applies to Range Metering and Global Loudness Metering. "
+                                                     "Default is ULONG_MAX (at least ~50 days).",
+                                                     /* min */ 0,
+                                                     /* max */ ULONG_MAX,
+                                                     /* default */ ULONG_MAX,
+                                                     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_POST_MESSAGES,
-      g_param_spec_boolean(
-          "post-messages", "Post Messages",
-          "Whether to post a 'loudness' element message on the bus for each "
-          "passed interval",
-          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_boolean("post-messages", "Post Messages",
+                           "Whether to post a 'loudness' element message on the bus for each "
+                           "passed interval",
+                           TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_INTERVAL,
-      g_param_spec_uint64(
-          "interval", "Interval",
-          "Interval of time between message posts (in nanoseconds)", 1,
-          G_MAXUINT64, PROP_INTERVAL_DEFAULT,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      g_param_spec_uint64("interval", "Interval", "Interval of time between message posts (in nanoseconds)", 1,
+                          G_MAXUINT64, PROP_INTERVAL_DEFAULT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-  gst_element_class_add_static_pad_template(element_class,
-                                            &sink_template_factory);
-  gst_element_class_add_static_pad_template(element_class,
-                                            &src_template_factory);
+  gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
+  gst_element_class_add_static_pad_template(element_class, &src_template_factory);
 
-  gst_element_class_set_static_metadata(
-      element_class, "ebur128", "Filter/Analyzer/Audio",
-      "Calculates the EBU-R 128 Loudness of an Audio-Stream and "
-      "emits them as Message",
-      "Peter Körner <peter@mazdermind.de>");
+  gst_element_class_set_static_metadata(element_class, "ebur128", "Filter/Analyzer/Audio",
+                                        "Calculates the EBU-R 128 Loudness of an Audio-Stream and "
+                                        "emits them as Message",
+                                        "Peter Körner <peter@mazdermind.de>");
 
   // configure vmethods
   trans_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128_set_caps);
@@ -274,11 +246,10 @@ static void gst_ebur128_init_libebur128(GstEbur128 *filter) {
   }
   ebur128_set_max_history(filter->state, filter->max_history);
 
-  GST_INFO_OBJECT(
-      filter,
-      "Initializing libebur128: "
-      "rate=%d channels=%d mode=0x%x max_window=%lu, max_history=%lu",
-      rate, channels, mode, filter->window, filter->max_history);
+  GST_INFO_OBJECT(filter,
+                  "Initializing libebur128: "
+                  "rate=%d channels=%d mode=0x%x max_window=%lu, max_history=%lu",
+                  rate, channels, mode, filter->window, filter->max_history);
 }
 
 static void gst_ebur128_destroy_libebur128(GstEbur128 *filter) {
@@ -316,12 +287,10 @@ static void gst_ebur128_recalc_interval_frames(GstEbur128 *filter) {
   interval_frames = GST_CLOCK_TIME_TO_FRAMES(interval, sample_rate);
 
   if (interval_frames == 0) {
-    GST_WARNING_OBJECT(
-        filter,
-        "interval %" GST_TIME_FORMAT " is too small, "
-        "should be at least %" GST_TIME_FORMAT " for sample rate %u",
-        GST_TIME_ARGS(interval),
-        GST_TIME_ARGS(GST_FRAMES_TO_CLOCK_TIME(1, sample_rate)), sample_rate);
+    GST_WARNING_OBJECT(filter,
+                       "interval %" GST_TIME_FORMAT " is too small, "
+                       "should be at least %" GST_TIME_FORMAT " for sample rate %u",
+                       GST_TIME_ARGS(interval), GST_TIME_ARGS(GST_FRAMES_TO_CLOCK_TIME(1, sample_rate)), sample_rate);
     interval_frames = 1;
   }
 
@@ -342,18 +311,14 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
 
   // Increment Message-Timestamp
   guint sample_rate = GST_AUDIO_INFO_RATE(&filter->audio_info);
-  GstClockTime duration_processed =
-      GST_FRAMES_TO_CLOCK_TIME(filter->frames_processed, sample_rate);
+  GstClockTime duration_processed = GST_FRAMES_TO_CLOCK_TIME(filter->frames_processed, sample_rate);
 
   GstClockTime timestamp = filter->start_ts + duration_processed;
-  GstClockTime running_time =
-      gst_segment_to_running_time(&trans->segment, GST_FORMAT_TIME, timestamp);
-  GstClockTime stream_time =
-      gst_segment_to_stream_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+  GstClockTime running_time = gst_segment_to_running_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+  GstClockTime stream_time = gst_segment_to_stream_time(&trans->segment, GST_FORMAT_TIME, timestamp);
 
   GstStructure *structure =
-      gst_structure_new("loudness", "timestamp", G_TYPE_UINT64, timestamp,
-                        "stream-time", G_TYPE_UINT64, stream_time,
+      gst_structure_new("loudness", "timestamp", G_TYPE_UINT64, timestamp, "stream-time", G_TYPE_UINT64, stream_time,
                         "running-time", G_TYPE_UINT64, running_time, NULL);
 
   gboolean success = TRUE;
@@ -361,8 +326,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->momentary) {
     double momentary;
     int ret = ebur128_loudness_momentary(filter->state, &momentary);
-    success &=
-        gst_ebur128_validate_lib_return("ebur128_loudness_momentary", ret);
+    success &= gst_ebur128_validate_lib_return("ebur128_loudness_momentary", ret);
     gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
   }
 
@@ -370,8 +334,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->shortterm) {
     double shortterm;
     int ret = ebur128_loudness_shortterm(filter->state, &shortterm);
-    success &=
-        gst_ebur128_validate_lib_return("ebur128_loudness_shortterm", ret);
+    success &= gst_ebur128_validate_lib_return("ebur128_loudness_shortterm", ret);
     gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
   }
 
@@ -405,8 +368,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
     GValue sample_peak = {
         0,
     };
-    success &= gst_ebur128_fill_channel_array(
-        filter, &sample_peak, "ebur128_sample_peak", &ebur128_sample_peak);
+    success &= gst_ebur128_fill_channel_array(filter, &sample_peak, "ebur128_sample_peak", &ebur128_sample_peak);
     gst_structure_take_value(structure, "sample-peak", &sample_peak);
   }
 
@@ -417,30 +379,23 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
     GValue true_peak = {
         0,
     };
-    success &= gst_ebur128_fill_channel_array(
-        filter, &true_peak, "ebur128_true_peak", &ebur128_true_peak);
+    success &= gst_ebur128_fill_channel_array(filter, &true_peak, "ebur128_true_peak", &ebur128_true_peak);
     gst_structure_take_value(structure, "true-peak", &true_peak);
   }
 
   if (success) {
-    GstMessage *message =
-        gst_message_new_element(GST_OBJECT(filter), structure);
+    GstMessage *message = gst_message_new_element(GST_OBJECT(filter), structure);
     gst_element_post_message(GST_ELEMENT(filter), message);
 
-    GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT,
-                    GST_TIME_ARGS(timestamp));
+    GST_INFO_OBJECT(filter, "emitting loudness-message at %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp));
 
   } else {
-    GST_ERROR_OBJECT(
-        filter,
-        "error getting the requested calculation results from libebur128");
+    GST_ERROR_OBJECT(filter, "error getting the requested calculation results from libebur128");
   }
   return success;
 }
 
-static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
-                                               GValue *array_gvalue,
-                                               const char *func_name,
+static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter, GValue *array_gvalue, const char *func_name,
                                                per_channel_func_t func) {
   g_value_init(array_gvalue, G_TYPE_VALUE_ARRAY);
   GValueArray *array = g_value_array_new(0);
@@ -466,8 +421,7 @@ static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
   return success;
 }
 
-static void gst_ebur128_set_property(GObject *object, guint prop_id,
-                                     const GValue *value, GParamSpec *pspec) {
+static void gst_ebur128_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec) {
   GstEbur128 *filter = GST_EBUR128(object);
 
   switch (prop_id) {
@@ -514,8 +468,7 @@ static void gst_ebur128_set_property(GObject *object, guint prop_id,
   gst_ebur128_reinit_libebur128_if_mode_changed(filter);
 }
 
-static void gst_ebur128_get_property(GObject *object, guint prop_id,
-                                     GValue *value, GParamSpec *pspec) {
+static void gst_ebur128_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec) {
   GstEbur128 *filter = GST_EBUR128(object);
 
   switch (prop_id) {
@@ -555,8 +508,7 @@ static void gst_ebur128_get_property(GObject *object, guint prop_id,
   }
 }
 
-static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
-                                     GstCaps *out) {
+static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in, GstCaps *out) {
   GstEbur128 *filter = GST_EBUR128(trans);
 
   GST_LOG_OBJECT(filter, "Received Caps in:  %" GST_PTR_FORMAT, in);
@@ -577,8 +529,7 @@ static gboolean gst_ebur128_set_caps(GstBaseTransform *trans, GstCaps *in,
   return TRUE;
 }
 
-static gboolean gst_ebur128_sink_event(GstBaseTransform *trans,
-                                       GstEvent *event) {
+static gboolean gst_ebur128_sink_event(GstBaseTransform *trans, GstEvent *event) {
   if (GST_EVENT_TYPE(event) == GST_EVENT_EOS) {
     GstEbur128 *filter = GST_EBUR128(trans);
 
@@ -600,8 +551,7 @@ static gboolean gst_ebur128_start(GstBaseTransform *trans) {
   return TRUE;
 }
 
-static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
-                                              GstBuffer *buf) {
+static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans, GstBuffer *buf) {
   GstEbur128 *filter = GST_EBUR128(trans);
 
   // Map and Analyze buffer
@@ -624,27 +574,22 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
   GST_DEBUG_OBJECT(filter,
                    "Got %s Buffer of %lu bytes representing %u frames of %u "
                    "bytes in %u channels.",
-                   GST_AUDIO_INFO_NAME(&filter->audio_info), map_info.size,
-                   num_frames, bytes_per_frame, channels);
+                   GST_AUDIO_INFO_NAME(&filter->audio_info), map_info.size, num_frames, bytes_per_frame, channels);
 
   gboolean success = TRUE;
 
   guint8 *data_ptr = map_info.data;
   while (num_frames > 0) {
-    const gint max_frames_to_process =
-        filter->interval_frames - filter->frames_since_last_mesage;
+    const gint max_frames_to_process = filter->interval_frames - filter->frames_since_last_mesage;
 
-    const gint frames_to_process =
-        max_frames_to_process > num_frames ? num_frames : max_frames_to_process;
+    const gint frames_to_process = max_frames_to_process > num_frames ? num_frames : max_frames_to_process;
 
     GST_INFO_OBJECT(filter,
                     "Processing %d of %d Frames "
                     "(Frames since last mesage: %d, interval_frames: %d)",
-                    frames_to_process, num_frames,
-                    filter->frames_since_last_mesage, filter->interval_frames);
+                    frames_to_process, num_frames, filter->frames_since_last_mesage, filter->interval_frames);
 
-    success &= gst_ebur128_add_frames(filter->state, format, data_ptr,
-                                      frames_to_process);
+    success &= gst_ebur128_add_frames(filter->state, format, data_ptr, frames_to_process);
 
     filter->frames_processed += frames_to_process;
 

@@ -11,10 +11,8 @@
  */
 static gboolean ebur128_plugin_init(GstPlugin *ebur128) {
   gboolean success = TRUE;
-  success &=
-      gst_element_register(ebur128, "ebur128", GST_RANK_NONE, GST_TYPE_EBUR128);
-  success &= gst_element_register(ebur128, "ebur128graph", GST_RANK_NONE,
-                                  GST_TYPE_EBUR128GRAPH);
+  success &= gst_element_register(ebur128, "ebur128", GST_RANK_NONE, GST_TYPE_EBUR128);
+  success &= gst_element_register(ebur128, "ebur128graph", GST_RANK_NONE, GST_TYPE_EBUR128GRAPH);
   return success;
 }
 
@@ -29,10 +27,8 @@ static gboolean ebur128_plugin_init(GstPlugin *ebur128) {
 
 /* gstreamer looks for this structure to register ebur128s
  */
-GST_PLUGIN_DEFINE(
-    GST_VERSION_MAJOR, GST_VERSION_MINOR, ebur128,
-    "The EBU-R 128 Plugin ('ebur128') provides Elements for calculating the "
-    "EBU-R 128 Loudness of an Audio-Stream and "
-    "to generate a Video-Stream visualizing the Loudness over Time",
-    ebur128_plugin_init, PACKAGE_VERSION, GST_LICENSE, GST_PACKAGE_NAME,
-    GST_PACKAGE_ORIGIN)
+GST_PLUGIN_DEFINE(GST_VERSION_MAJOR, GST_VERSION_MINOR, ebur128,
+                  "The EBU-R 128 Plugin ('ebur128') provides Elements for calculating the "
+                  "EBU-R 128 Loudness of an Audio-Stream and "
+                  "to generate a Video-Stream visualizing the Loudness over Time",
+                  ebur128_plugin_init, PACKAGE_VERSION, GST_LICENSE, GST_PACKAGE_NAME, GST_PACKAGE_ORIGIN)
