@@ -105,10 +105,6 @@ static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
                                                const char *func_name,
                                                per_channel_func_t func);
 
-static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
-                                       GstAudioFormat format, guint8 *data,
-                                       gint num_frames);
-
 /* GObject vmethod implementations */
 
 /* initialize the ebur128's class */
@@ -647,8 +643,10 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
                     frames_to_process, num_frames,
                     filter->frames_since_last_mesage, filter->interval_frames);
 
-    success &=
-        gst_ebur128_add_frames(filter, format, data_ptr, frames_to_process);
+    success &= gst_ebur128_add_frames(filter->state, format, data_ptr,
+                                      frames_to_process);
+
+    filter->frames_processed += frames_to_process;
 
     data_ptr += frames_to_process * bytes_per_frame;
     num_frames -= frames_to_process;
@@ -663,55 +661,4 @@ static GstFlowReturn gst_ebur128_transform_ip(GstBaseTransform *trans,
   gst_buffer_unmap(buf, &map_info);
 
   return success ? GST_FLOW_OK : GST_FLOW_ERROR;
-}
-
-static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
-                                       GstAudioFormat format, guint8 *data,
-                                       gint num_frames) {
-  gboolean success = TRUE;
-  int ret;
-
-  GST_DEBUG_OBJECT(filter, "Adding %u frames to libebur128 at %p", num_frames,
-                   data);
-
-  switch (format) {
-  case GST_AUDIO_FORMAT_S16LE:
-  case GST_AUDIO_FORMAT_S16BE:
-    ret = ebur128_add_frames_short(filter->state, (const short *)data,
-                                   num_frames);
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_add_frames_short", ret);
-    break;
-  case GST_AUDIO_FORMAT_S32LE:
-  case GST_AUDIO_FORMAT_S32BE:
-    ret = ebur128_add_frames_int(filter->state, (const int *)data, num_frames);
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_add_frames_int", ret);
-    break;
-  case GST_AUDIO_FORMAT_F32LE:
-  case GST_AUDIO_FORMAT_F32BE:
-    ret = ebur128_add_frames_float(filter->state, (const float *)data,
-                                   num_frames);
-
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_add_frames_float", ret);
-    break;
-  case GST_AUDIO_FORMAT_F64LE:
-  case GST_AUDIO_FORMAT_F64BE:
-    ret = ebur128_add_frames_double(filter->state, (const double *)data,
-                                    num_frames);
-    success &= gst_ebur128_validate_lib_return(
-        GST_ELEMENT(filter), "ebur128_add_frames_double", ret);
-    break;
-  default:
-    GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",
-                     GST_AUDIO_INFO_NAME(&filter->audio_info));
-    success = FALSE;
-  }
-
-  if (success) {
-    filter->frames_processed += num_frames;
-  }
-
-  return success;
 }
