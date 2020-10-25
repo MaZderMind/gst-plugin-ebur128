@@ -24,6 +24,7 @@
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
 #include "gstebur128graphelement.h"
+#include "gstebur128shared.h"
 #include <math.h>
 
 GST_DEBUG_CATEGORY_STATIC(gst_ebur128graph_debug);
@@ -68,6 +69,8 @@ static GstStaticPadTemplate src_template_factory =
 G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_AUDIO_VISUALIZER);
 
 /* forward declarations */
+static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph);
+static void gst_ebur128graph_destroy_libebur128(GstEbur128Graph *graph);
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
                                           const GValue *value,
                                           GParamSpec *pspec);
@@ -76,8 +79,8 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id,
 static void gst_ebur128graph_finalize(GObject *object);
 
 static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer);
-static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph);
-static void gst_ebur128graph_setup_cairo_state(GstEbur128Graph *graph);
+static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph);
+static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph);
 static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph);
 static void gst_ebur128graph_render_background(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
@@ -92,6 +95,11 @@ static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph,
                                                 cairo_t *ctx);
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
                                         GstBuffer *audio, GstVideoFrame *video);
+static void gst_ebur128graph_render_header(GstEbur128Graph *graph,
+                                           cairo_t *ctx);
+static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph,
+                                                cairo_t *ctx);
+static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx);
 
 /* GObject vmethod implementations */
 
@@ -129,6 +137,8 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.color_border = 0xFF00CC00;
   graph->properties.color_scale = 0xFF009999;
   graph->properties.color_scale_lines = 0x4CFFFFFF;
+  graph->properties.color_header = 0xFFFFFF00;
+  graph->properties.color_graph = 0x99000000;
 
   graph->properties.color_too_loud = 0xFFDB6666;
   graph->properties.color_loudness_ok = 0xFF66DB66;
@@ -145,9 +155,48 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.scale_mode = GST_EBUR128_SCALE_MODE_RELATIVE;
   graph->properties.scale_target = -23;
 
+  // measurement
+  graph->properties.measurement = GST_EBUR128_MEASUREMENT_SHORT_TERM;
+
   // font
   graph->properties.font_size_header = 12.;
   graph->properties.font_size_scale = 8.;
+
+  // measurements
+  graph->measurements.momentary = 0;
+  graph->measurements.short_term = 0;
+  graph->measurements.global = 0;
+  graph->measurements.range = 0;
+  graph->measurements.history = NULL;
+}
+
+static void gst_ebur128graph_finalize(GObject *object) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
+  gst_ebur128graph_destroy_libebur128(graph);
+  gst_ebur128graph_destroy_cairo(graph);
+
+  g_clear_pointer(&graph->measurements.history, g_free);
+}
+
+static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph) {
+  gint rate = GST_AUDIO_INFO_RATE(&graph->audio_visualizer.ainfo);
+  gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_visualizer.ainfo);
+  gint mode =
+      EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA;
+
+  graph->state = ebur128_init(channels, rate, mode);
+
+  GST_INFO_OBJECT(graph,
+                  "Initializing libebur128: "
+                  "rate=%d channels=%d mode=0x%x",
+                  rate, channels, mode);
+}
+
+static void gst_ebur128graph_destroy_libebur128(GstEbur128Graph *graph) {
+  if (graph->state != NULL) {
+    GST_INFO_OBJECT(graph, "Destroying libebur128 State");
+    ebur128_destroy(&graph->state);
+  }
 }
 
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id,
@@ -194,10 +243,12 @@ static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
 
   // cleanup existing state
-  gst_ebur128graph_destroy_cairo_state(graph);
+  gst_ebur128graph_destroy_libebur128(graph);
+  gst_ebur128graph_destroy_cairo(graph);
 
-  // initialize cairo
-  gst_ebur128graph_setup_cairo_state(graph);
+  // initialize libraries
+  gst_ebur128graph_init_libebur128(graph);
+  gst_ebur128graph_init_cairo(graph);
 
   // re-calculate all positions
   gst_ebur128graph_calculate_positions(graph);
@@ -209,10 +260,20 @@ static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   gst_ebur128graph_render_background(graph, graph->background_context, width,
                                      height);
 
+  // allocate space for measurements, one measurement per pixel
+  graph->measurements.history_size = graph->positions.graph.w - 2;
+  graph->measurements.history_head = 0;
+  g_clear_pointer(&graph->measurements.history, g_free);
+  graph->measurements.history =
+      g_malloc_n(graph->measurements.history_size, sizeof(gdouble));
+  for (gint i = 0; i < graph->measurements.history_size; i++) {
+    graph->measurements.history[i] = -HUGE_VAL;
+  }
+
   return TRUE;
 }
 
-static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph) {
+static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph) {
   if (graph->background_context != NULL) {
     GST_INFO_OBJECT(graph, "Destroying existing 'background' Cairo-Context");
     cairo_destroy(graph->background_context);
@@ -224,7 +285,7 @@ static void gst_ebur128graph_destroy_cairo_state(GstEbur128Graph *graph) {
   }
 }
 
-static void gst_ebur128graph_setup_cairo_state(GstEbur128Graph *graph) {
+static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph) {
   GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
   gint width = video_info->width;
   gint height = video_info->height;
@@ -301,13 +362,8 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   graph->positions.scale_show_every = fmax(ceil(show_every_nth), 1);
 }
 
-static void gst_ebur128graph_finalize(GObject *object) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
-  gst_ebur128graph_destroy_cairo_state(graph);
-}
-
-static void gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph,
-                                              GstBuffer *audio) {
+static gboolean gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph,
+                                                  GstBuffer *audio) {
   // Map and Analyze buffer
   GstMapInfo map_info;
   gst_buffer_map(audio, &map_info, GST_MAP_READ);
@@ -317,14 +373,80 @@ static void gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph,
       GST_AUDIO_INFO_BPF(&graph->audio_visualizer.ainfo);
   gint num_frames = map_info.size / bytes_per_frame;
 
-  GST_LOG_OBJECT(graph, "Adding %d frames ", num_frames);
+  return gst_ebur128_add_frames(graph->state, format, map_info.data,
+                                num_frames);
+}
+
+static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
+  double momentary;  // momentary loudness (last 400ms) in LUFS
+  double short_term; // short-term loudness (last 3s) in LUFS
+  double range;      // loudness range (LRA) in LU
+  double global;     // integrated loudness in LUFS
+
+  if (!gst_ebur128_validate_lib_return(
+          "ebur128_loudness_momentary",
+          ebur128_loudness_momentary(graph->state, &momentary))) {
+    return FALSE;
+  }
+  if (!gst_ebur128_validate_lib_return(
+          "ebur128_loudness_shortterm",
+          ebur128_loudness_shortterm(graph->state, &short_term))) {
+    return FALSE;
+  }
+  if (!gst_ebur128_validate_lib_return(
+          "ebur128_loudness_range",
+          ebur128_loudness_range(graph->state, &range))) {
+    return FALSE;
+  }
+  if (!gst_ebur128_validate_lib_return(
+          "ebur128_loudness_global",
+          ebur128_loudness_global(graph->state, &global))) {
+    return FALSE;
+  }
+
+  graph->measurements.momentary = momentary;
+  graph->measurements.short_term = short_term;
+  graph->measurements.range = range;
+  graph->measurements.global = global;
+
+  double measurement = 0;
+  switch (graph->properties.measurement) {
+  case GST_EBUR128_MEASUREMENT_SHORT_TERM:
+    measurement = short_term;
+    break;
+  case GST_EBUR128_MEASUREMENT_MOMENTARY:
+    measurement = momentary;
+    break;
+  }
+
+  // add to measurements ring-buffer
+  GST_LOG_OBJECT(
+      graph,
+      "writing measurement into ring-buffer of size %d at head-position %d",
+      graph->measurements.history_size, graph->measurements.history_head);
+
+  graph->measurements.history[graph->measurements.history_head] = measurement;
+  if (++graph->measurements.history_head >= graph->measurements.history_size) {
+    GST_LOG_OBJECT(graph,
+                   "ring-buffer head-position overflowed at %d, resetting to 0",
+                   graph->measurements.history_head);
+    graph->measurements.history_head = 0;
+  }
+
+  return TRUE;
 }
 
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,
                                         GstBuffer *audio,
                                         GstVideoFrame *video) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
-  gst_ebur128graph_add_audio_frames(graph, audio);
+  if (!gst_ebur128graph_add_audio_frames(graph, audio)) {
+    return FALSE;
+  }
+
+  if (!gst_ebur128graph_take_measurement(graph)) {
+    return FALSE;
+  }
 
   GstVideoInfo *video_info = &visualizer->vinfo;
   gint width = video_info->width;
@@ -502,10 +624,87 @@ static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph,
 static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph,
                                                cairo_t *ctx, gint width,
                                                gint height) {
-  // header
+  gst_ebur128graph_render_header(graph, ctx);
+  gst_ebur128graph_render_graph(graph, ctx);
+  gst_ebur128graph_render_scale_lines(graph, ctx);
+}
 
-  // data
+static void gst_ebur128graph_render_header(GstEbur128Graph *graph,
+                                           cairo_t *ctx) {
+  const gchar *unit =
+      graph->properties.scale_mode == GST_EBUR128_SCALE_MODE_ABSOLUTE ? "LUFS"
+                                                                      : "LU";
+  const gdouble correction =
+      graph->properties.scale_mode == GST_EBUR128_SCALE_MODE_ABSOLUTE
+          ? 0.0
+          : graph->properties.scale_target;
 
+  gchar header_str[200];
+  g_snprintf(header_str, 200,
+             "TARGET: %+d LUFS | "
+             "M: %+7.2f %s | "
+             "S: %+7.2f %s | "
+             "I: %+7.2f %s | "
+             "LRA: %+7.2f LU",
+             graph->properties.scale_target,
+             graph->measurements.momentary - correction, unit,
+             graph->measurements.short_term - correction, unit,
+             graph->measurements.global - correction, unit,
+             graph->measurements.range);
+
+  cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL,
+                         CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_header);
+  cairo_move_to(ctx, graph->positions.header.x,
+                graph->positions.header.y + graph->positions.header.h + .5);
+  cairo_show_text(ctx, header_str);
+  cairo_fill(ctx);
+}
+
+static void gst_ebur128graph_render_graph_add_datapoint(
+    GstEbur128Graph *graph, cairo_t *ctx, const gint datapoint_index,
+    const gint data_point_zero_y, gint *data_point_x) {
+  gdouble measurement = graph->measurements.history[datapoint_index];
+  gdouble value_relative_to_target = fmax(
+      measurement - graph->properties.scale_target, graph->properties.scale_to);
+
+  gint data_point_delta_y =
+      (value_relative_to_target - graph->properties.scale_to) *
+          graph->positions.scale_spacing +
+      graph->positions.scale_spacing - 2;
+  cairo_line_to(ctx, *data_point_x, data_point_zero_y - data_point_delta_y);
+
+  (*data_point_x)++;
+}
+
+static void gst_ebur128graph_render_graph(GstEbur128Graph *graph,
+                                          cairo_t *ctx) {
+
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_graph);
+  gint data_point_x = graph->positions.graph.x + 1;
+  gint data_point_zero_y =
+      graph->positions.graph.y + graph->positions.graph.h - 1;
+  cairo_move_to(ctx, data_point_x, data_point_zero_y);
+
+  for (gint i = graph->measurements.history_head;
+       i < graph->measurements.history_size; i++) {
+    gst_ebur128graph_render_graph_add_datapoint(
+        graph, ctx, i, data_point_zero_y, &data_point_x);
+  }
+  for (gint i = 0; i < graph->measurements.history_head; i++) {
+    gst_ebur128graph_render_graph_add_datapoint(
+        graph, ctx, i, data_point_zero_y, &data_point_x);
+  }
+
+  data_point_x += 1;
+  cairo_line_to(ctx, data_point_x, data_point_zero_y);
+  cairo_line_to(ctx, data_point_x + graph->positions.graph.w - 1,
+                data_point_zero_y);
+  cairo_fill(ctx);
+}
+
+static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph,
+                                                cairo_t *ctx) {
   // scale lines
   cairo_set_line_width(ctx, 1.0);
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_scale_lines);

@@ -31,6 +31,11 @@ typedef enum {
   GST_EBUR128_SCALE_MODE_ABSOLUTE
 } GstEbur128ScaleMode;
 
+typedef enum {
+  GST_EBUR128_MEASUREMENT_MOMENTARY,
+  GST_EBUR128_MEASUREMENT_SHORT_TERM
+} GstEbur128Measurement;
+
 typedef struct _GstEbur128Positions GstEbur128Positions;
 struct _GstEbur128Positions {
   GstEbur128Position header;
@@ -50,6 +55,8 @@ struct _GstEbur128Properties {
   gint color_border;
   gint color_scale;
   gint color_scale_lines;
+  gint color_header;
+  gint color_graph;
 
   gint color_too_loud;
   gint color_loudness_ok;
@@ -66,9 +73,25 @@ struct _GstEbur128Properties {
   GstEbur128ScaleMode scale_mode;
   gint scale_target;
 
+  // measurement
+  GstEbur128Measurement measurement;
+
   // font
-  double font_size_header;
-  double font_size_scale;
+  gdouble font_size_header;
+  gdouble font_size_scale;
+};
+
+typedef struct _GstEbur128Measurements GstEbur128Measurements;
+struct _GstEbur128Measurements {
+  gdouble momentary;
+  gdouble short_term;
+  gdouble global;
+  gdouble range;
+
+  // single-headed ring-buffer
+  gint history_size;
+  gint history_head;
+  gdouble *history;
 };
 
 typedef struct _GstEbur128Graph GstEbur128Graph;
@@ -77,11 +100,14 @@ struct _GstEbur128Graph {
 
   GstEbur128Positions positions;
   GstEbur128Properties properties;
+  GstEbur128Measurements measurements;
 
   cairo_surface_t *background_image;
   cairo_t *background_context;
 
   GstPad *sinkpad, *srcpad;
+
+  ebur128_state *state;
 };
 
 typedef struct _GstEbur128GraphClass GstEbur128GraphClass;
