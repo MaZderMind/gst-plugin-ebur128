@@ -871,6 +871,7 @@ static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx)
              graph->measurements.range);
 
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_set_font_size(ctx, graph->properties.font_size_header);
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_header);
   cairo_move_to(ctx, graph->positions.header.x, graph->positions.header.y + graph->positions.header.h + .5);
   cairo_show_text(ctx, header_str);
