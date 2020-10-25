@@ -40,21 +40,21 @@ struct _GstEbur128Positions {
 typedef struct _GstEbur128Properties GstEbur128Properties;
 struct _GstEbur128Properties {
   // colors
-  gint color_background;
-  gint color_border;
-  gint color_scale;
-  gint color_scale_lines;
-  gint color_header;
-  gint color_graph;
+  guint color_background;
+  guint color_border;
+  guint color_scale;
+  guint color_scale_lines;
+  guint color_header;
+  guint color_graph;
 
-  gint color_too_loud;
-  gint color_loudness_ok;
-  gint color_not_loud_enough;
+  guint color_too_loud;
+  guint color_loudness_ok;
+  guint color_not_loud_enough;
 
   // sizes
-  gint gutter;
-  gint scale_w;
-  gint gauge_w;
+  guint gutter;
+  guint scale_w;
+  guint gauge_w;
 
   // scale
   gint scale_from;

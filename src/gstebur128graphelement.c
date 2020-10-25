@@ -33,14 +33,83 @@ GST_DEBUG_CATEGORY_STATIC(gst_ebur128graph_debug);
 /* Filter signals and args */
 enum { LAST_SIGNAL };
 
-enum { PROP_0 };
+enum {
+  PROP_0,
 
-#define PROP_INTERVAL_DEFAULT (GST_SECOND / 10)
+  PROP_COLOR_BACKGROUND,
+  PROP_COLOR_BORDER,
+  PROP_COLOR_SCALE,
+  PROP_COLOR_SCALE_LINES,
+  PROP_COLOR_HEADER,
+  PROP_COLOR_GRAPH,
 
-/* the capabilities of the inputs and outputs.
- *
- * describe the real formats here.
- */
+  PROP_COLOR_TOO_LOUD,
+  PROP_COLOR_LOUDNESS_OK,
+  PROP_COLOR_NOT_LOUD_ENOUGH,
+
+  PROP_GUTTER,
+  PROP_SCALE_W,
+  PROP_GAUGE_W,
+
+  PROP_SCALE_FROM,
+  PROP_SCALE_TO,
+  PROP_SCALE_MODE,
+  PROP_SCALE_TARGET,
+
+  PROP_FONT_SIZE_HEADER,
+  PROP_FONT_SIZE_SCALE,
+
+  PROP_MEASUREMENT
+};
+
+#define DEFAULT_COLOR_BACKGROUND 0xFF000000
+#define DEFAULT_COLOR_BORDER 0xFF00CC00
+#define DEFAULT_COLOR_SCALE 0xFF009999
+#define DEFAULT_COLOR_SCALE_LINES 0x4CFFFFFF
+#define DEFAULT_COLOR_HEADER 0xFFFFFF00
+#define DEFAULT_COLOR_GRAPH 0x99000000
+
+#define DEFAULT_COLOR_TOO_LOUD 0xFFDB6666
+#define DEFAULT_COLOR_LOUDNESS_OK 0xFF66DB66
+#define DEFAULT_COLOR_NOT_LOUD_ENOUGH 0xFF6666DB
+
+#define DEFAULT_GUTTER 5
+#define DEFAULT_SCALE_W 20
+#define DEFAULT_GAUGE_W 20
+
+#define DEFAULT_SCALE_FROM +18
+#define DEFAULT_SCALE_TO -36
+#define DEFAULT_SCALE_MODE GST_EBUR128_SCALE_MODE_RELATIVE
+#define DEFAULT_SCALE_TARGET -23
+
+#define DEFAULT_FONT_SIZE_HEADER 12.0
+#define DEFAULT_FONT_SIZE_SCALE 8.0
+
+#define DEFAULT_MEASUREMENT GST_EBUR128_MEASUREMENT_SHORT_TERM
+
+#define GST_TYPE_EBUR128GRAPH_SCALE_MODE (gst_ebur128graph_scale_mode_get_type())
+static GType gst_ebur128graph_scale_mode_get_type(void) {
+  static GType ebur128graph_scale_mode = 0;
+  static const GEnumValue scale_modes[] = {{GST_EBUR128_SCALE_MODE_RELATIVE, "Relative", "relative"},
+                                           {GST_EBUR128_SCALE_MODE_ABSOLUTE, "Absolute", "absolute"},
+                                           {0, NULL, NULL}};
+  if (!ebur128graph_scale_mode) {
+    ebur128graph_scale_mode = g_enum_register_static("GstEbur128GraphScaleMode", scale_modes);
+  }
+  return ebur128graph_scale_mode;
+}
+
+#define GST_TYPE_EBUR128GRAPH_MEASUREMENT (gst_ebur128graph_measurement_get_type())
+static GType gst_ebur128graph_measurement_get_type(void) {
+  static GType ebur128graph_measurement = 0;
+  static const GEnumValue measurements[] = {{GST_EBUR128_MEASUREMENT_MOMENTARY, "Mentary", "momentary"},
+                                            {GST_EBUR128_MEASUREMENT_SHORT_TERM, "Short-Term", "short-term"},
+                                            {0, NULL, NULL}};
+  if (!ebur128graph_measurement) {
+    ebur128graph_measurement = g_enum_register_static("GstEbur128GraphMeasurement", measurements);
+  }
+  return ebur128graph_measurement;
+}
 
 #define SUPPORTED_AUDIO_FORMATS                                                                                        \
   "{ " GST_AUDIO_NE(S16) ", " GST_AUDIO_NE(S32) "," GST_AUDIO_NE(F32) ", " GST_AUDIO_NE(F64) " }"
@@ -103,6 +172,123 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
   audio_visualizer->setup = GST_DEBUG_FUNCPTR(gst_ebur128graph_setup);
   audio_visualizer->render = GST_DEBUG_FUNCPTR(gst_ebur128graph_render);
 
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_BACKGROUND,
+      g_param_spec_uint("color-background", "Background-Color", "Color od the Background (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_BACKGROUND,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_BORDER,
+      g_param_spec_uint("color-border", "Border-Color", "Color of the Borders (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_BORDER,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_SCALE,
+      g_param_spec_uint("color-scale", "Scale-Color", "Color of the Scale-Text (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_SCALE,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_SCALE_LINES,
+      g_param_spec_uint("color-scale-lines", "Scale-Line-Color", "Color of the Scale-Lines (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_SCALE_LINES,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_HEADER,
+      g_param_spec_uint("color-header", "Header-Color", "Color of the Header-Text (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_HEADER,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_GRAPH,
+      g_param_spec_uint("color-graph", "Graph-Color", "Color of the Graph-Area (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_GRAPH,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_TOO_LOUD,
+      g_param_spec_uint("color-too-loud", "Too-Loud Area Color", "Color of the Too-Loud Area (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_TOO_LOUD,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_LOUDNESS_OK,
+      g_param_spec_uint("color-loudness-ok", "Loudness-Okay Area Color",
+                        "Color of the Loudness-Olay Area (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_LOUDNESS_OK,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_NOT_LOUD_ENOUGH,
+      g_param_spec_uint("color-not-loud-enough", "Not-loud-enough Area Color",
+                        "Color of the Not-loud-enough Area (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_NOT_LOUD_ENOUGH,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_GUTTER,
+      g_param_spec_uint("gutter", "Gutter-Width", "Width of the Gutter between Elements (Pixels)", /* MIN */ 0,
+                        /* MAX */ G_MAXUINT32, DEFAULT_GUTTER,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SCALE_W,
+      g_param_spec_uint("scale-w", "Scale-Width", "Width of the Scale-Area (Pixels)", /* MIN */ 0,
+                        /* MAX */ G_MAXUINT32, DEFAULT_SCALE_W,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_GAUGE_W,
+      g_param_spec_uint("gauge-w", "Gauge-Width", "Width of the Gauge-Area (Pixels)", /* MIN */ 0,
+                        /* MAX */ G_MAXUINT32, DEFAULT_GAUGE_W,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SCALE_FROM,
+      g_param_spec_int("scale-from", "Scale Upper Bound", "Upper Bound of the Scale (LUFS)", /* MIN */ G_MININT32,
+                       /* MAX */ G_MAXINT32, DEFAULT_SCALE_FROM,
+                       G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SCALE_TO,
+      g_param_spec_int("scale-to", "Scale Lower Bound", "Lower Bound of the Scale (LUFS)", /* MIN */ G_MININT32,
+                       /* MAX */ G_MAXINT32, DEFAULT_SCALE_TO,
+                       G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(gobject_class, PROP_SCALE_MODE,
+                                  g_param_spec_enum("scale-mode", "Scale-Mode",
+                                                    "Mode of Display of the Scale and the Header",
+                                                    GST_TYPE_EBUR128GRAPH_SCALE_MODE, DEFAULT_SCALE_MODE,
+                                                    G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_FONT_SIZE_HEADER,
+      g_param_spec_double("font-size-header", "Header Font-Size", "Font-Size of the Header (User-Space Units)",
+                          /* MIN */ 1.0, /* MAX */ DBL_MAX, DEFAULT_FONT_SIZE_HEADER,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_FONT_SIZE_SCALE,
+      g_param_spec_double("font-size-scale", "Scale Font-Size", "Font-Size of the Scale (User-Space Units)",
+                          /* MIN */ 1.0,
+                          /* MAX */ DBL_MAX, DEFAULT_FONT_SIZE_SCALE,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SCALE_TARGET,
+      g_param_spec_int("scale-target", "Target LUFS", "Target of the Scale (LUFS)",
+                       /* MIN */ G_MININT32,
+                       /* MAX */ G_MAXINT32, DEFAULT_SCALE_TARGET,
+                       G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(gobject_class, PROP_MEASUREMENT,
+                                  g_param_spec_enum("measurement", "Measurement to Graph", "Measurement to Graph",
+                                                    GST_TYPE_EBUR128GRAPH_MEASUREMENT, DEFAULT_MEASUREMENT,
+                                                    G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
   gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
   gst_element_class_add_static_pad_template(element_class, &src_template_factory);
 
@@ -114,34 +300,34 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
 static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   // colors
-  graph->properties.color_background = 0xFF000000;
-  graph->properties.color_border = 0xFF00CC00;
-  graph->properties.color_scale = 0xFF009999;
-  graph->properties.color_scale_lines = 0x4CFFFFFF;
-  graph->properties.color_header = 0xFFFFFF00;
-  graph->properties.color_graph = 0x99000000;
+  graph->properties.color_background = DEFAULT_COLOR_BACKGROUND;
+  graph->properties.color_border = DEFAULT_COLOR_BORDER;
+  graph->properties.color_scale = DEFAULT_COLOR_SCALE;
+  graph->properties.color_scale_lines = DEFAULT_COLOR_SCALE_LINES;
+  graph->properties.color_header = DEFAULT_COLOR_HEADER;
+  graph->properties.color_graph = DEFAULT_COLOR_GRAPH;
 
-  graph->properties.color_too_loud = 0xFFDB6666;
-  graph->properties.color_loudness_ok = 0xFF66DB66;
-  graph->properties.color_not_loud_enough = 0xFF6666DB;
+  graph->properties.color_too_loud = DEFAULT_COLOR_TOO_LOUD;
+  graph->properties.color_loudness_ok = DEFAULT_COLOR_LOUDNESS_OK;
+  graph->properties.color_not_loud_enough = DEFAULT_COLOR_NOT_LOUD_ENOUGH;
 
   // sizes
-  graph->properties.gutter = 5;
-  graph->properties.scale_w = 20;
-  graph->properties.gauge_w = 20;
+  graph->properties.gutter = DEFAULT_GUTTER;
+  graph->properties.scale_w = DEFAULT_SCALE_W;
+  graph->properties.gauge_w = DEFAULT_GAUGE_W;
 
   // scale
-  graph->properties.scale_from = +18;
-  graph->properties.scale_to = -36;
-  graph->properties.scale_mode = GST_EBUR128_SCALE_MODE_RELATIVE;
-  graph->properties.scale_target = -23;
-
-  // measurement
-  graph->properties.measurement = GST_EBUR128_MEASUREMENT_SHORT_TERM;
+  graph->properties.scale_from = DEFAULT_SCALE_FROM;
+  graph->properties.scale_to = DEFAULT_SCALE_TO;
+  graph->properties.scale_mode = DEFAULT_SCALE_MODE;
+  graph->properties.scale_target = DEFAULT_SCALE_TARGET;
 
   // font
-  graph->properties.font_size_header = 12.;
-  graph->properties.font_size_scale = 8.;
+  graph->properties.font_size_header = DEFAULT_FONT_SIZE_HEADER;
+  graph->properties.font_size_scale = DEFAULT_FONT_SIZE_SCALE;
+
+  // measurement
+  graph->properties.measurement = DEFAULT_MEASUREMENT;
 
   // measurements
   graph->measurements.momentary = 0;
@@ -180,9 +366,66 @@ static void gst_ebur128graph_destroy_libebur128(GstEbur128Graph *graph) {
 }
 
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec) {
-  // GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
 
   switch (prop_id) {
+  case PROP_COLOR_BACKGROUND:
+    graph->properties.color_background = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_BORDER:
+    graph->properties.color_border = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_SCALE:
+    graph->properties.color_scale = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_SCALE_LINES:
+    graph->properties.color_scale_lines = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_HEADER:
+    graph->properties.color_header = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_GRAPH:
+    graph->properties.color_graph = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_TOO_LOUD:
+    graph->properties.color_too_loud = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_LOUDNESS_OK:
+    graph->properties.color_loudness_ok = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_NOT_LOUD_ENOUGH:
+    graph->properties.color_not_loud_enough = g_value_get_uint(value);
+    break;
+  case PROP_GUTTER:
+    graph->properties.gutter = g_value_get_uint(value);
+    break;
+  case PROP_SCALE_W:
+    graph->properties.scale_w = g_value_get_uint(value);
+    break;
+  case PROP_GAUGE_W:
+    graph->properties.gauge_w = g_value_get_uint(value);
+    break;
+  case PROP_SCALE_FROM:
+    graph->properties.scale_from = g_value_get_int(value);
+    break;
+  case PROP_SCALE_TO:
+    graph->properties.scale_to = g_value_get_int(value);
+    break;
+  case PROP_SCALE_MODE:
+    graph->properties.scale_mode = g_value_get_enum(value);
+    break;
+  case PROP_SCALE_TARGET:
+    graph->properties.scale_target = g_value_get_int(value);
+    break;
+  case PROP_FONT_SIZE_HEADER:
+    graph->properties.font_size_header = g_value_get_double(value);
+    break;
+  case PROP_FONT_SIZE_SCALE:
+    graph->properties.font_size_scale = g_value_get_double(value);
+    break;
+  case PROP_MEASUREMENT:
+    graph->properties.measurement = g_value_get_enum(value);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -190,9 +433,66 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
 }
 
 static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec) {
-  // GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(object);
 
   switch (prop_id) {
+  case PROP_COLOR_BACKGROUND:
+    g_value_set_uint(value, graph->properties.color_background);
+    break;
+  case PROP_COLOR_BORDER:
+    g_value_set_uint(value, graph->properties.color_border);
+    break;
+  case PROP_COLOR_SCALE:
+    g_value_set_uint(value, graph->properties.color_scale);
+    break;
+  case PROP_COLOR_SCALE_LINES:
+    g_value_set_uint(value, graph->properties.color_scale_lines);
+    break;
+  case PROP_COLOR_HEADER:
+    g_value_set_uint(value, graph->properties.color_header);
+    break;
+  case PROP_COLOR_GRAPH:
+    g_value_set_uint(value, graph->properties.color_graph);
+    break;
+  case PROP_COLOR_TOO_LOUD:
+    g_value_set_uint(value, graph->properties.color_too_loud);
+    break;
+  case PROP_COLOR_LOUDNESS_OK:
+    g_value_set_uint(value, graph->properties.color_loudness_ok);
+    break;
+  case PROP_COLOR_NOT_LOUD_ENOUGH:
+    g_value_set_uint(value, graph->properties.color_not_loud_enough);
+    break;
+  case PROP_GUTTER:
+    g_value_set_uint(value, graph->properties.gutter);
+    break;
+  case PROP_SCALE_W:
+    g_value_set_uint(value, graph->properties.scale_w);
+    break;
+  case PROP_GAUGE_W:
+    g_value_set_uint(value, graph->properties.gauge_w);
+    break;
+  case PROP_SCALE_FROM:
+    g_value_set_int(value, graph->properties.scale_from);
+    break;
+  case PROP_SCALE_TO:
+    g_value_set_int(value, graph->properties.scale_to);
+    break;
+  case PROP_SCALE_MODE:
+    g_value_set_enum(value, graph->properties.scale_mode);
+    break;
+  case PROP_SCALE_TARGET:
+    g_value_set_int(value, graph->properties.scale_target);
+    break;
+  case PROP_FONT_SIZE_HEADER:
+    g_value_set_double(value, graph->properties.font_size_header);
+    break;
+  case PROP_FONT_SIZE_SCALE:
+    g_value_set_double(value, graph->properties.font_size_scale);
+    break;
+  case PROP_MEASUREMENT:
+    g_value_set_enum(value, graph->properties.measurement);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
