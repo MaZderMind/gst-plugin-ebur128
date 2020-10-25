@@ -26,13 +26,13 @@ run-tests: builddir
 	cd builddir && meson test -v
 
 run-ebur128:
-	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:0 gst-launch-1.0 -m \
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
 	  filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
       ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true interval=100000000 ! \
 	  autoaudiosink
 
 run-ebur128-with-seek:
-	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:0 gst-launch-1.0 -m \
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
 		filesrc location=example-audio/music.mp3 ! \
 		mpegaudioparse ! mpg123audiodec ! \
 		ebur128 ! \
@@ -43,9 +43,9 @@ run-ebur128-with-seek:
 		t. ! queue ! autoaudiosink
 
 run-ebur128graph:
-	GST_PLUGIN_PATH=$(realpath builddir) GST_DEBUG=ebur128:9 gst-launch-1.0 ! \
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph ! video/x-raw,format=RGBA,width=640,height=480,framerate=30/1 ! glimagesink \
+		t. ! queue ! ebur128graph ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 
 .PHONY: build inspect inspect-ebur128 run-ebur128 format

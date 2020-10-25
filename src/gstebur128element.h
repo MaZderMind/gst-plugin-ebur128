@@ -2,6 +2,8 @@
 #define __GST_EBUR128_H__
 
 #include <ebur128.h>
+#include <gst/audio/audio.h>
+#include <gst/base/gstbasetransform.h>
 #include <gst/gst.h>
 
 G_BEGIN_DECLS

@@ -11,8 +11,14 @@ api_version = '1.0'
 gst_dep = dependency('gstreamer-1.0', fallback : ['gstreamer', 'gst_dep'])
 gstbase_dep = dependency('gstreamer-base-1.0', fallback : ['gstreamer', 'gst_base_dep'])
 gstaudio_dep = dependency('gstreamer-audio-1.0', fallback : ['gst-plugins-base', 'audio_dep'])
+gstvideo_dep = dependency('gstreamer-video-1.0', fallback : ['gst-plugins-base', 'video_dep'])
+gstpbutils_dep = dependency('gstreamer-pbutils-1.0', fallback : ['gst-plugins-base', 'pbutils_dep'])
 
 libebur128_dep = dependency('libebur128')
+cairo_dep = dependency('cairo')
+
+cc = meson.get_compiler('c')
+m_dep = cc.find_library('m', required : false)
 
 plugin_c_args = ['-DHAVE_CONFIG_H']
 
@@ -26,13 +32,27 @@ cdata.set_quoted('GST_PACKAGE_ORIGIN', 'https://mazdermind.de')
 configure_file(output : 'config.h', configuration : cdata)
 
 plugin_sources = [
-  'src/gstebur128.c',
+  'src/gstebur128plugin.c',
+  'src/gstebur128shared.c',
+  'src/gstebur128element.c',
+  'src/gstebur128graphelement.c',
 ]
 
 ebur128 = library('gstebur128',
   plugin_sources,
   c_args: plugin_c_args,
-  dependencies : [gst_dep, gstbase_dep, gstaudio_dep, libebur128_dep],
+  dependencies : [
+    gst_dep,
+    gstbase_dep,
+    gstaudio_dep,
+    gstvideo_dep,
+    gstpbutils_dep,
+
+    libebur128_dep,
+    cairo_dep,
+
+    m_dep
+  ],
   install : true,
   install_dir : plugins_install_dir,
 )

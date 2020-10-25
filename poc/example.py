@@ -37,7 +37,6 @@ GAUGE_W = 20
 
 SCALE_FROM = +18
 SCALE_TO = -36
-SCALE_NTH = 1
 
 TARGET = -23
 SCALE = Scale.RELATIVE
@@ -110,7 +109,7 @@ def draw(ctx, w, h):
     correction = TARGET if SCALE == Scale.RELATIVE else 0
     unit = 'LUFS' if SCALE == Scale.ABSOLUT else 'LU'
     ctx.show_text(f"TARGET: {TARGET} LUFS | " +
-                  f"M: {with_sign(round(current_data_point['momentary'] - correction, 2))} "
+                  f"M: {with_sign(round(current_data_point['momentary'] - correction, 2))} {unit} | "
                   f"S: {with_sign(round(current_data_point['shortterm'] - correction, 2))} {unit} | " +
                   f"I: {with_sign(round(current_data_point['global'] - correction, 2))} {unit} | "
                   f"LRA: {with_sign(round(current_data_point['range'], 2))} LU")
@@ -124,10 +123,15 @@ def draw(ctx, w, h):
 
     num_scales = SCALE_FROM + abs(SCALE_TO) + 1
     distance = scale_h / (num_scales + 1)
+
     ctx.select_font_face('monospace', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
     ctx.set_font_size(SCALE_FONT_SIZE)
     ctx.set_source_rgb(*COLOR_SCALE_TEXT)
-    for scale_index in range(0, num_scales, SCALE_NTH):
+
+    extends = ctx.text_extents("0")
+    show_every = int(max(math.ceil(1 / (distance / extends.height)), 1))
+
+    for scale_index in range(0, num_scales, show_every):
         scale_text = generate_scale_text(scale_index)
         extends = ctx.text_extents(scale_text)
 
@@ -205,7 +209,7 @@ def draw(ctx, w, h):
 
     # scale lines
     ctx.set_source_rgba(*COLOR_SCALE_LINES)
-    for scale_index in range(0, num_scales, SCALE_NTH):
+    for scale_index in range(0, num_scales, show_every):
         gauge_line_y = gauge_y + math.ceil(scale_index * distance + distance)
         ctx.move_to(gauge_x + 1, gauge_line_y + .5)
         ctx.line_to(gauge_x + gauge_w - 1, gauge_line_y + .5)
