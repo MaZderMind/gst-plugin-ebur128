@@ -365,8 +365,8 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->momentary) {
     double momentary;
     int ret = ebur128_loudness_momentary(filter->state, &momentary);
-    success &= gst_ebur128_validate_lib_return(
-        GST_ELEMENT(filter), "ebur128_loudness_momentary", ret);
+    success &=
+        gst_ebur128_validate_lib_return("ebur128_loudness_momentary", ret);
     gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
   }
 
@@ -374,8 +374,8 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->shortterm) {
     double shortterm;
     int ret = ebur128_loudness_shortterm(filter->state, &shortterm);
-    success &= gst_ebur128_validate_lib_return(
-        GST_ELEMENT(filter), "ebur128_loudness_shortterm", ret);
+    success &=
+        gst_ebur128_validate_lib_return("ebur128_loudness_shortterm", ret);
     gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
   }
 
@@ -383,8 +383,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->global) {
     double global;
     int ret = ebur128_loudness_global(filter->state, &global);
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_loudness_global", ret);
+    success &= gst_ebur128_validate_lib_return("ebur128_loudness_global", ret);
     gst_structure_set(structure, "global", G_TYPE_DOUBLE, global, NULL);
   }
 
@@ -392,8 +391,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->window > 0) {
     double window;
     int ret = ebur128_loudness_window(filter->state, filter->window, &window);
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_loudness_window", ret);
+    success &= gst_ebur128_validate_lib_return("ebur128_loudness_window", ret);
     gst_structure_set(structure, "window", G_TYPE_DOUBLE, window, NULL);
   }
 
@@ -401,8 +399,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->range) {
     double range;
     int ret = ebur128_loudness_range(filter->state, &range);
-    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
-                                               "ebur128_loudness_range", ret);
+    success &= gst_ebur128_validate_lib_return("ebur128_loudness_range", ret);
     gst_structure_set(structure, "range", G_TYPE_DOUBLE, range, NULL);
   }
 
@@ -465,8 +462,7 @@ static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
 
   for (gint channel = 0; channel < channels; channel++) {
     int ret = func(filter->state, channel, &double_value);
-    success &=
-        gst_ebur128_validate_lib_return(GST_ELEMENT(filter), func_name, ret);
+    success &= gst_ebur128_validate_lib_return(func_name, ret);
     g_value_set_double(&double_gvalue, double_value);
     g_value_array_append(array, &double_gvalue);
   }
