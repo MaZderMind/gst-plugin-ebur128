@@ -109,7 +109,7 @@ def draw(ctx, w, h):
     correction = TARGET if SCALE == Scale.RELATIVE else 0
     unit = 'LUFS' if SCALE == Scale.ABSOLUT else 'LU'
     ctx.show_text(f"TARGET: {TARGET} LUFS | " +
-                  f"M: {with_sign(round(current_data_point['momentary'] - correction, 2))} "
+                  f"M: {with_sign(round(current_data_point['momentary'] - correction, 2))} {unit} | "
                   f"S: {with_sign(round(current_data_point['shortterm'] - correction, 2))} {unit} | " +
                   f"I: {with_sign(round(current_data_point['global'] - correction, 2))} {unit} | "
                   f"LRA: {with_sign(round(current_data_point['range'], 2))} LU")
