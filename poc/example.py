@@ -123,7 +123,6 @@ def draw(ctx, w, h):
 
     num_scales = SCALE_FROM + abs(SCALE_TO) + 1
     distance = scale_h / (num_scales + 1)
-    print("scale.h=",scale_h," scale_spacing=",distance);
 
     ctx.select_font_face('monospace', cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_BOLD)
     ctx.set_font_size(SCALE_FONT_SIZE)
