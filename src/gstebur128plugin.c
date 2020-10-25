@@ -1,5 +1,5 @@
-#include "gstebur128.h"
-#include "gstebur128graph.h"
+#include "gstebur128element.h"
+#include "gstebur128graphelement.h"
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>

@@ -32,10 +32,10 @@ cdata.set_quoted('GST_PACKAGE_ORIGIN', 'https://mazdermind.de')
 configure_file(output : 'config.h', configuration : cdata)
 
 plugin_sources = [
-  'src/plugin.c',
+  'src/gstebur128plugin.c',
   'src/gstebur128shared.c',
-  'src/gstebur128.c',
-  'src/gstebur128graph.c',
+  'src/gstebur128element.c',
+  'src/gstebur128graphelement.c',
 ]
 
 ebur128 = library('gstebur128',

@@ -23,7 +23,7 @@
  * everywhere */
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
-#include "gstebur128graph.h"
+#include "gstebur128graphelement.h"
 #include <math.h>
 
 GST_DEBUG_CATEGORY_STATIC(gst_ebur128graph_debug);
@@ -318,8 +318,6 @@ static void gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph,
   gint num_frames = map_info.size / bytes_per_frame;
 
   GST_LOG_OBJECT(graph, "Adding %d frames ", num_frames);
-
-
 }
 
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer,

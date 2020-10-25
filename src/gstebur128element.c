@@ -23,7 +23,7 @@
  * everywhere */
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
-#include "gstebur128.h"
+#include "gstebur128element.h"
 #include "gstebur128shared.h"
 
 GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
