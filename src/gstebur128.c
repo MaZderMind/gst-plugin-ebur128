@@ -24,6 +24,7 @@
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
 #include "gstebur128.h"
+#include "gstebur128shared.h"
 
 GST_DEBUG_CATEGORY_STATIC(gst_ebur128_debug);
 #define GST_CAT_DEFAULT gst_ebur128_debug
@@ -103,10 +104,6 @@ static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
                                                GValue *array_gvalue,
                                                const char *func_name,
                                                per_channel_func_t func);
-
-static gboolean gst_ebur128_validate_lib_return(GstEbur128 *filter,
-                                                const char *invocation,
-                                                const int return_value);
 
 static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
                                        GstAudioFormat format, guint8 *data,
@@ -369,7 +366,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
     double momentary;
     int ret = ebur128_loudness_momentary(filter->state, &momentary);
     success &= gst_ebur128_validate_lib_return(
-        filter, "ebur128_loudness_momentary", ret);
+        GST_ELEMENT(filter), "ebur128_loudness_momentary", ret);
     gst_structure_set(structure, "momentary", G_TYPE_DOUBLE, momentary, NULL);
   }
 
@@ -378,7 +375,7 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
     double shortterm;
     int ret = ebur128_loudness_shortterm(filter->state, &shortterm);
     success &= gst_ebur128_validate_lib_return(
-        filter, "ebur128_loudness_shortterm", ret);
+        GST_ELEMENT(filter), "ebur128_loudness_shortterm", ret);
     gst_structure_set(structure, "shortterm", G_TYPE_DOUBLE, shortterm, NULL);
   }
 
@@ -386,8 +383,8 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->global) {
     double global;
     int ret = ebur128_loudness_global(filter->state, &global);
-    success &=
-        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_global", ret);
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
+                                               "ebur128_loudness_global", ret);
     gst_structure_set(structure, "global", G_TYPE_DOUBLE, global, NULL);
   }
 
@@ -395,8 +392,8 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->window > 0) {
     double window;
     int ret = ebur128_loudness_window(filter->state, filter->window, &window);
-    success &=
-        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_window", ret);
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
+                                               "ebur128_loudness_window", ret);
     gst_structure_set(structure, "window", G_TYPE_DOUBLE, window, NULL);
   }
 
@@ -404,8 +401,8 @@ static gboolean gst_ebur128_post_message(GstEbur128 *filter) {
   if (filter->range) {
     double range;
     int ret = ebur128_loudness_range(filter->state, &range);
-    success &=
-        gst_ebur128_validate_lib_return(filter, "ebur128_loudness_range", ret);
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
+                                               "ebur128_loudness_range", ret);
     gst_structure_set(structure, "range", G_TYPE_DOUBLE, range, NULL);
   }
 
@@ -468,24 +465,13 @@ static gboolean gst_ebur128_fill_channel_array(GstEbur128 *filter,
 
   for (gint channel = 0; channel < channels; channel++) {
     int ret = func(filter->state, channel, &double_value);
-    success &= gst_ebur128_validate_lib_return(filter, func_name, ret);
+    success &=
+        gst_ebur128_validate_lib_return(GST_ELEMENT(filter), func_name, ret);
     g_value_set_double(&double_gvalue, double_value);
     g_value_array_append(array, &double_gvalue);
   }
 
   return success;
-}
-
-static gboolean gst_ebur128_validate_lib_return(GstEbur128 *filter,
-                                                const char *invocation,
-                                                const int return_value) {
-  if (return_value != EBUR128_SUCCESS) {
-    GST_ERROR_OBJECT(filter, "Error-Code %d from libebur128 call to %s",
-                     return_value, invocation);
-    return FALSE;
-  }
-
-  return TRUE;
 }
 
 static void gst_ebur128_set_property(GObject *object, guint prop_id,
@@ -697,21 +683,21 @@ static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
   case GST_AUDIO_FORMAT_S16BE:
     ret = ebur128_add_frames_short(filter->state, (const short *)data,
                                    num_frames);
-    success &= gst_ebur128_validate_lib_return(filter,
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
                                                "ebur128_add_frames_short", ret);
     break;
   case GST_AUDIO_FORMAT_S32LE:
   case GST_AUDIO_FORMAT_S32BE:
     ret = ebur128_add_frames_int(filter->state, (const int *)data, num_frames);
-    success &=
-        gst_ebur128_validate_lib_return(filter, "ebur128_add_frames_int", ret);
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
+                                               "ebur128_add_frames_int", ret);
     break;
   case GST_AUDIO_FORMAT_F32LE:
   case GST_AUDIO_FORMAT_F32BE:
     ret = ebur128_add_frames_float(filter->state, (const float *)data,
                                    num_frames);
 
-    success &= gst_ebur128_validate_lib_return(filter,
+    success &= gst_ebur128_validate_lib_return(GST_ELEMENT(filter),
                                                "ebur128_add_frames_float", ret);
     break;
   case GST_AUDIO_FORMAT_F64LE:
@@ -719,7 +705,7 @@ static gboolean gst_ebur128_add_frames(GstEbur128 *filter,
     ret = ebur128_add_frames_double(filter->state, (const double *)data,
                                     num_frames);
     success &= gst_ebur128_validate_lib_return(
-        filter, "ebur128_add_frames_double", ret);
+        GST_ELEMENT(filter), "ebur128_add_frames_double", ret);
     break;
   default:
     GST_ERROR_OBJECT(filter, "Unhandled Audio-Format: %s",

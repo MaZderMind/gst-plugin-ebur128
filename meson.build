@@ -33,6 +33,7 @@ configure_file(output : 'config.h', configuration : cdata)
 
 plugin_sources = [
   'src/plugin.c',
+  'src/gstebur128shared.c',
   'src/gstebur128.c',
   'src/gstebur128graph.c',
 ]
