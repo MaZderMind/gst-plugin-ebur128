@@ -274,7 +274,7 @@ static void gst_ebur128_init_libebur128(GstEbur128 *filter) {
   }
   ebur128_set_max_history(filter->state, filter->max_history);
 
-  GST_LOG_OBJECT(
+  GST_INFO_OBJECT(
       filter,
       "Initializing libebur128: "
       "rate=%d channels=%d mode=0x%x max_window=%lu, max_history=%lu",
@@ -283,7 +283,7 @@ static void gst_ebur128_init_libebur128(GstEbur128 *filter) {
 
 static void gst_ebur128_destroy_libebur128(GstEbur128 *filter) {
   if (filter->state != NULL) {
-    GST_LOG_OBJECT(filter, "Destroying libebur128 State");
+    GST_INFO_OBJECT(filter, "Destroying libebur128 State");
     ebur128_destroy(&filter->state);
   }
 }
