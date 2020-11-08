@@ -124,6 +124,10 @@ static GType gst_ebur128graph_measurement_get_type(void) {
   "layout = (string) interleaved "
 
 #define SUPPORTED_VIDEO_CAPS_STRING GST_VIDEO_CAPS_MAKE("{ BGRx, BGRA }")
+#define PREFERRED_VIDEO_WIDTH 640
+#define PREFERRED_VIDEO_HEIGHT 480
+#define PREFERRED_VIDEO_FRAMERATE_NUMERATOR 30
+#define PREFERRED_VIDEO_FRAMERATE_DENOMINATOR 1
 
 static GstStaticPadTemplate sink_template_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_AUDIO_CAPS_STRING));
@@ -132,7 +136,7 @@ static GstStaticPadTemplate src_template_factory =
     GST_STATIC_PAD_TEMPLATE("src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_VIDEO_CAPS_STRING));
 
 #define gst_ebur128graph_parent_class parent_class
-G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_AUDIO_VISUALIZER);
+G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_BASE_TRANSFORM);
 
 /* forward declarations */
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph);
@@ -141,7 +145,7 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
 static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_finalize(GObject *object);
 
-static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer);
+static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph);
 static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph);
 static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph);
 static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph);
@@ -149,13 +153,20 @@ static void gst_ebur128graph_render_background(GstEbur128Graph *graph, cairo_t *
 static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph, cairo_t *ctx, gint width, gint height);
 static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position);
 static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph, cairo_t *ctx);
-static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffer *audio, GstVideoFrame *video);
 static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx);
 static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx);
 static void gst_ebur128graph_render_gauge(GstEbur128Graph *graph, cairo_t *ctx);
 static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph, cairo_t *ctx);
 
-/* GObject vmethod implementations */
+static GstCaps *gst_ebur128graph_transform_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                GstCaps *filter);
+static GstCaps *gst_ebur128graph_fixate_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                             GstCaps *othercaps);
+static GstFlowReturn gst_ebur128graph_dummy_transform(GstBaseTransform *trans, GstBuffer *inbuf, GstBuffer *outbuf);
+static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *incaps, GstCaps *outcaps);
+static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                gsize size, GstCaps *othercaps, gsize *othersize);
+static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf);
 
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
@@ -163,14 +174,21 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
-  GstAudioVisualizerClass *audio_visualizer = (GstAudioVisualizerClass *)klass;
+  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_CLASS(klass);
 
-  gobject_class->set_property = gst_ebur128graph_set_property;
-  gobject_class->get_property = gst_ebur128graph_get_property;
-  gobject_class->finalize = gst_ebur128graph_finalize;
+  // configure vmethods
+  gobject_class->set_property = GST_DEBUG_FUNCPTR(gst_ebur128graph_set_property);
+  gobject_class->get_property = GST_DEBUG_FUNCPTR(gst_ebur128graph_get_property);
+  gobject_class->finalize = GST_DEBUG_FUNCPTR(gst_ebur128graph_finalize);
 
-  audio_visualizer->setup = GST_DEBUG_FUNCPTR(gst_ebur128graph_setup);
-  audio_visualizer->render = GST_DEBUG_FUNCPTR(gst_ebur128graph_render);
+  transform_class->transform_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_transform_caps);
+  transform_class->fixate_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_fixate_caps);
+  transform_class->transform = GST_DEBUG_FUNCPTR(
+      gst_ebur128graph_dummy_transform); // required to force base_transform out of passthrough mode, though it is never
+                                         // actually called because we implement out orn generate_output vmethod
+  transform_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_set_caps);
+  transform_class->transform_size = GST_DEBUG_FUNCPTR(gst_ebur128graph_transform_size);
+  transform_class->generate_output = GST_DEBUG_FUNCPTR(gst_ebur128graph_generate_output);
 
   g_object_class_install_property(
       gobject_class, PROP_COLOR_BACKGROUND,
@@ -298,7 +316,179 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
                                         "Peter Körner <peter@mazdermind.de>");
 }
 
+static GstCaps *gst_ebur128graph_transform_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                GstCaps *filter) {
+  GstCaps *res;
+  switch (direction) {
+  case GST_PAD_SRC:
+    GST_DEBUG_OBJECT(
+        trans, "gst_ebur128graph_transform_caps called for direction=GST_PAD_SRC with caps=%" GST_PTR_FORMAT, caps);
+    res = gst_caps_from_string(SUPPORTED_AUDIO_CAPS_STRING);
+    GST_DEBUG_OBJECT(trans, "gst_ebur128graph_transform_caps returning caps=%" GST_PTR_FORMAT, res);
+    break;
+  case GST_PAD_SINK:
+    GST_DEBUG_OBJECT(
+        trans, "gst_ebur128graph_transform_caps called for direction=GST_PAD_SINK with caps=%" GST_PTR_FORMAT, caps);
+    res = gst_caps_from_string(SUPPORTED_VIDEO_CAPS_STRING);
+    GST_DEBUG_OBJECT(trans, "gst_ebur128graph_transform_caps returning caps=%" GST_PTR_FORMAT, res);
+    break;
+  case GST_PAD_UNKNOWN:
+    return NULL;
+  }
+
+  if (filter) {
+    GstCaps *intersection;
+
+    GST_DEBUG_OBJECT(trans, "Using filter caps %" GST_PTR_FORMAT, filter);
+    intersection = gst_caps_intersect_full(filter, res, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref(res);
+    res = intersection;
+    GST_DEBUG_OBJECT(trans, "Intersection %" GST_PTR_FORMAT, res);
+  }
+
+  return res;
+}
+
+static GstCaps *gst_ebur128graph_fixate_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                             GstCaps *othercaps) {
+  switch (direction) {
+  case GST_PAD_SRC:
+    GST_DEBUG_OBJECT(trans,
+                     "gst_ebur128graph_fixate_caps called for direction=GST_PAD_SINK with othercaps=%" GST_PTR_FORMAT,
+                     othercaps);
+    othercaps = gst_caps_fixate(othercaps);
+    break;
+  case GST_PAD_SINK:
+    GST_DEBUG_OBJECT(trans,
+                     "gst_ebur128graph_fixate_caps called for direction=GST_PAD_SRC with othercaps=%" GST_PTR_FORMAT,
+                     othercaps);
+    othercaps = gst_caps_make_writable(othercaps);
+    GstStructure *structure = gst_caps_get_structure(othercaps, 0);
+
+    gst_structure_fixate_field_nearest_int(structure, "width", PREFERRED_VIDEO_WIDTH);
+    gst_structure_fixate_field_nearest_int(structure, "height", PREFERRED_VIDEO_HEIGHT);
+
+    if (gst_structure_has_field(structure, "framerate")) {
+      gst_structure_fixate_field_nearest_fraction(structure, "framerate", PREFERRED_VIDEO_FRAMERATE_NUMERATOR,
+                                                  PREFERRED_VIDEO_FRAMERATE_DENOMINATOR);
+    } else {
+      gst_structure_set(structure, "framerate", GST_TYPE_FRACTION, PREFERRED_VIDEO_FRAMERATE_NUMERATOR,
+                        PREFERRED_VIDEO_FRAMERATE_DENOMINATOR, NULL);
+    }
+
+    othercaps = gst_caps_fixate(othercaps);
+    break;
+  case GST_PAD_UNKNOWN:
+    return NULL;
+  }
+
+  GST_DEBUG_OBJECT(trans, "fixated to %" GST_PTR_FORMAT, othercaps);
+  return othercaps;
+}
+
+static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                gsize size, GstCaps *othercaps, gsize *othersize) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+
+  switch (direction) {
+  case GST_PAD_SRC:
+    *othersize = graph->video_info.size;
+    GST_DEBUG_OBJECT(graph, "gst_ebur128graph_transform_size called for direction=GST_PAD_SRC, returning %ld",
+                     *othersize);
+    return TRUE;
+
+  case GST_PAD_SINK:
+  case GST_PAD_UNKNOWN:
+    return FALSE;
+  }
+
+  return FALSE;
+}
+
+static GstFlowReturn gst_ebur128graph_dummy_transform(GstBaseTransform *trans, GstBuffer *inbuf, GstBuffer *outbuf) {
+  GST_ERROR_OBJECT(trans, "transform should have never been called, logic is completely handled by generate_output");
+  return GST_FLOW_NOT_SUPPORTED;
+}
+
+static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *incaps, GstCaps *outcaps) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+  GST_INFO_OBJECT(graph, "gst_ebur128graph_set_caps, incaps=%" GST_PTR_FORMAT " outcaps=%" GST_PTR_FORMAT, incaps,
+                  outcaps);
+
+  /* store audio-info */
+  if (!gst_audio_info_from_caps(&graph->audio_info, incaps)) {
+    GST_ERROR_OBJECT(graph, "Unhandled Input-Caps: %" GST_PTR_FORMAT, incaps);
+    return FALSE;
+  }
+
+  /* store video-info */
+  if (!gst_video_info_from_caps(&graph->video_info, outcaps)) {
+    GST_ERROR_OBJECT(graph, "Unhandled Output-Caps: %" GST_PTR_FORMAT, outcaps);
+    return FALSE;
+  }
+
+  gst_ebur128graph_setup(graph);
+
+  return TRUE;
+}
+
+static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(trans);
+  GstBuffer *inbuf = trans->queued_buf;
+  GstFlowReturn ret = GST_FLOW_OK;
+
+  if (inbuf == NULL) {
+    GST_INFO_OBJECT(trans, "consumed all of the input-buffer");
+    return ret;
+  }
+
+  // Experiment: One Out-Buffer for each In-Buffer
+  GST_DEBUG_OBJECT(trans, "calling prepare buffer");
+  ret = transform_class->prepare_output_buffer(trans, inbuf, outbuf);
+
+  GstMapInfo map_info_in;
+  gst_buffer_map(inbuf, &map_info_in, GST_MAP_READ);
+
+  GstMapInfo map_info_out;
+  gst_buffer_map(*outbuf, &map_info_out, GST_MAP_WRITE);
+
+  GST_INFO_OBJECT(trans, "mapped inbuf (%ld bytes)", map_info_in.size);
+  GST_INFO_OBJECT(trans, "mapped outbuf (%ld bytes)", map_info_out.size);
+
+  // copy background over
+  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
+  // cairo_fill) but because we *know* that both image surfaces use the same
+  // format we can use memcpy which is probably quite a bit faster and we're on
+  // the hot path here.
+  memcpy(map_info_out.data, cairo_image_surface_get_data(graph->background_image), map_info_out.size);
+
+  gst_buffer_unmap(inbuf, &map_info_in);
+  gst_buffer_unmap(*outbuf, &map_info_out);
+
+  // simuilate consumed input buffer
+  GST_DEBUG_OBJECT(trans, "freeing input-buffer");
+  gst_buffer_unref(inbuf);
+  inbuf = trans->queued_buf = NULL;
+
+  if (ret != GST_FLOW_OK || *outbuf == NULL)
+    goto no_buffer;
+
+  GST_INFO_OBJECT(trans, "using allocated buffer %p", *outbuf);
+  return ret;
+
+  /* ERRORS */
+no_buffer : {
+  *outbuf = NULL;
+  GST_WARNING_OBJECT(trans, "could not get buffer from pool: %s", gst_flow_get_name(ret));
+  return ret;
+}
+}
+
 static void gst_ebur128graph_init(GstEbur128Graph *graph) {
+  gst_audio_info_init(&graph->audio_info);
+  gst_video_info_init(&graph->video_info);
+
   // colors
   graph->properties.color_background = DEFAULT_COLOR_BACKGROUND;
   graph->properties.color_border = DEFAULT_COLOR_BORDER;
@@ -346,8 +536,8 @@ static void gst_ebur128graph_finalize(GObject *object) {
 }
 
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph) {
-  gint rate = GST_AUDIO_INFO_RATE(&graph->audio_visualizer.ainfo);
-  gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_visualizer.ainfo);
+  gint rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
+  gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
   gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA;
 
   graph->state = ebur128_init(channels, rate, mode);
@@ -500,7 +690,7 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
 }
 
 static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) {
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   switch (video_info->finfo->format) {
   case GST_VIDEO_FORMAT_BGRx:
     return CAIRO_FORMAT_RGB24;
@@ -514,9 +704,7 @@ static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) 
   }
 }
 
-static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
-
+static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // cleanup existing state
   gst_ebur128graph_destroy_libebur128(graph);
   gst_ebur128graph_destroy_cairo(graph);
@@ -529,7 +717,7 @@ static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   gst_ebur128graph_calculate_positions(graph);
 
   // render background
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
   gst_ebur128graph_render_background(graph, graph->background_context, width, height);
@@ -559,7 +747,7 @@ static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph) {
 }
 
 static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph) {
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
 
@@ -575,7 +763,7 @@ static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph) {
 
 static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   cairo_t *ctx = graph->background_context;
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
 
@@ -631,8 +819,8 @@ static gboolean gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph, GstBuf
   GstMapInfo map_info;
   gst_buffer_map(audio, &map_info, GST_MAP_READ);
 
-  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_visualizer.ainfo);
-  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_visualizer.ainfo);
+  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_info);
+  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_info);
   gint num_frames = map_info.size / bytes_per_frame;
 
   return gst_ebur128_add_frames(graph->state, format, map_info.data, num_frames);
@@ -688,6 +876,7 @@ static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
   return TRUE;
 }
 
+#if 0
 static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffer *audio, GstVideoFrame *video) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
   if (!gst_ebur128graph_add_audio_frames(graph, audio)) {
@@ -698,11 +887,11 @@ static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffe
     return FALSE;
   }
 
-  GstVideoInfo *video_info = &visualizer->vinfo;
+  GstVideoInfo *video_info = &visualizer->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
 
-  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, visualizer->vinfo.finfo->name);
+  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, visualizer->video_info.finfo->name);
 
   // copy background over
   // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
@@ -724,6 +913,7 @@ static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffe
 
   return TRUE;
 }
+#endif
 
 /**
  * ARGB is kind of a standard when it comes to specifying colors in GStreamer

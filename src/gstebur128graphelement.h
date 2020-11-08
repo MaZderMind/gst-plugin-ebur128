@@ -5,25 +5,41 @@
 #include <ebur128.h>
 #include <gst/audio/audio.h>
 #include <gst/gst.h>
-#include <gst/pbutils/gstaudiovisualizer.h>
 #include <gst/video/video.h>
 
 G_BEGIN_DECLS
 
 #define GST_TYPE_EBUR128GRAPH (gst_ebur128graph_get_type())
-#define GST_EBUR128GRAPH(obj) (G_TYPE_CHECK_INSTANCE_CAST((obj), GST_TYPE_EBUR128GRAPH, GstEbur128Graph))
-#define GST_EBUR128GRAPH_CLASS(klass) (G_TYPE_CHECK_CLASS_CAST((klass), GST_TYPE_EBUR128GRAPH, GstEbur128GraphClass))
-#define GST_IS_EBUR128GRAPH(obj) (G_TYPE_CHECK_INSTANCE_TYPE((obj), GST_TYPE_EBUR128GRAPH))
-#define GST_IS_EBUR128GRAPH_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE((klass), GST_TYPE_EBUR128GRAPH))
+G_DECLARE_FINAL_TYPE(GstEbur128Graph, gst_ebur128graph, GST, EBUR128GRAPH, GstBaseTransform)
 
 typedef struct _GstEbur128Position GstEbur128Position;
 struct _GstEbur128Position {
   gint x, y, w, h;
 };
 
-typedef enum { GST_EBUR128_SCALE_MODE_RELATIVE, GST_EBUR128_SCALE_MODE_ABSOLUTE } GstEbur128ScaleMode;
+typedef enum {
+  /**
+   * tbd.
+   */
+  GST_EBUR128_SCALE_MODE_RELATIVE,
 
-typedef enum { GST_EBUR128_MEASUREMENT_MOMENTARY, GST_EBUR128_MEASUREMENT_SHORT_TERM } GstEbur128Measurement;
+  /**
+   * tbd.
+   */
+  GST_EBUR128_SCALE_MODE_ABSOLUTE
+} GstEbur128ScaleMode;
+
+typedef enum {
+  /**
+   * tbd.
+   */
+  GST_EBUR128_MEASUREMENT_MOMENTARY,
+
+  /**
+   * tbd.
+   */
+  GST_EBUR128_MEASUREMENT_SHORT_TERM
+} GstEbur128Measurement;
 
 typedef struct _GstEbur128Positions GstEbur128Positions;
 struct _GstEbur128Positions {
@@ -83,9 +99,8 @@ struct _GstEbur128Measurements {
   gdouble *history;
 };
 
-typedef struct _GstEbur128Graph GstEbur128Graph;
 struct _GstEbur128Graph {
-  GstAudioVisualizer audio_visualizer;
+  GstBaseTransform transform;
 
   GstEbur128Positions positions;
   GstEbur128Properties properties;
@@ -97,15 +112,9 @@ struct _GstEbur128Graph {
   GstPad *sinkpad, *srcpad;
 
   ebur128_state *state;
+  GstAudioInfo audio_info;
+  GstVideoInfo video_info;
 };
-
-typedef struct _GstEbur128GraphClass GstEbur128GraphClass;
-struct _GstEbur128GraphClass {
-  GstAudioVisualizerClass parent_class;
-};
-
-GType gst_ebur128graph_get_type(void);
-gboolean gst_ebur128graph_plugin_init(GstPlugin *plugin);
 
 G_END_DECLS
 
