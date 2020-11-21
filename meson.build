@@ -35,6 +35,7 @@ plugin_sources = [
   'src/gstebur128shared.c',
   'src/gstebur128element.c',
   'src/gstebur128graphelement.c',
+  'src/gstebur128graphrender.c',
 ]
 
 ebur128 = library('gstebur128',
