@@ -80,6 +80,7 @@ struct _GstEbur128Properties {
 
   // measurement
   GstEbur128Measurement measurement;
+  GstClockTime timebase;
 
   // font
   gdouble font_size_header;
@@ -99,6 +100,16 @@ struct _GstEbur128Measurements {
   gdouble *history;
 };
 
+typedef struct _GstEbur128InputBufferState GstEbur128InputBufferState;
+struct _GstEbur128InputBufferState {
+  gboolean is_mapped;
+  GstMapInfo map_info;
+
+  guint8 *read_ptr;
+  guint total_frames;
+  guint remaining_frames;
+};
+
 struct _GstEbur128Graph {
   GstBaseTransform transform;
 
@@ -114,6 +125,17 @@ struct _GstEbur128Graph {
   ebur128_state *state;
   GstAudioInfo audio_info;
   GstVideoInfo video_info;
+
+  guint measurement_interval_frames;
+  guint video_interval_frames;
+
+  // running state
+  GstEbur128InputBufferState input_buffer_state;
+  guint64 frames_processed;
+  GstClockTime start_ts;
+
+  guint frames_since_last_video_frame;
+  guint frames_since_last_measurement;
 };
 
 G_END_DECLS

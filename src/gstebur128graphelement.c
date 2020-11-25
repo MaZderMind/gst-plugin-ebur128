@@ -145,6 +145,7 @@ static void gst_ebur128graph_destroy_libebur128(GstEbur128Graph *graph);
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_finalize(GObject *object);
+static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph);
 
 static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph);
 static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph);
@@ -160,6 +161,7 @@ static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *inca
 static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
                                                 gsize size, GstCaps *othercaps, gsize *othersize);
 static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf);
+static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf);
 
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
@@ -425,57 +427,120 @@ static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *inca
   return TRUE;
 }
 
+/**
+ * This Method is called over and over with an input-buffer in trans->queued_buf until it does not produce any more
+ * output frames. The Buffer in trans->queued_buf can be of any size. It is ok to not return any output-buffers at all,
+ * 1 or more.
+ */
 static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf) {
   GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
-  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(trans);
   GstBuffer *inbuf = trans->queued_buf;
-  GstFlowReturn ret = GST_FLOW_OK;
+  GST_DEBUG_OBJECT(graph, "generate_output called with inbuf=%p", inbuf);
 
-  if (inbuf == NULL) {
-    GST_INFO_OBJECT(trans, "consumed all of the input-buffer");
-    return ret;
+  // Manage Message-Timestamp
+  if (GST_BUFFER_FLAG_IS_SET(inbuf, GST_BUFFER_FLAG_DISCONT)) {
+    graph->start_ts = GST_BUFFER_TIMESTAMP(inbuf);
+  }
+  if (G_UNLIKELY(!GST_CLOCK_TIME_IS_VALID(graph->start_ts))) {
+    graph->start_ts = GST_BUFFER_TIMESTAMP(inbuf);
   }
 
-  // Experiment: One Out-Buffer for each In-Buffer
-  GST_DEBUG_OBJECT(trans, "calling prepare buffer");
-  ret = transform_class->prepare_output_buffer(trans, inbuf, outbuf);
+  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_info);
+  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_info);
 
-  GstMapInfo map_info_in;
-  gst_buffer_map(inbuf, &map_info_in, GST_MAP_READ);
+  // if buffer is not mapped yet, map it and calculate total_frames & remaining_frames
+  if (!graph->input_buffer_state.is_mapped) {
+    GST_DEBUG_OBJECT(graph, "inbuf is not mapped yet, mapping");
+    gst_buffer_map(inbuf, &graph->input_buffer_state.map_info, GST_MAP_READ);
+    graph->input_buffer_state.is_mapped = TRUE;
 
-  GstMapInfo map_info_out;
-  gst_buffer_map(*outbuf, &map_info_out, GST_MAP_WRITE);
+    graph->input_buffer_state.read_ptr = graph->input_buffer_state.map_info.data;
+    graph->input_buffer_state.total_frames = graph->input_buffer_state.remaining_frames =
+        graph->input_buffer_state.map_info.size / bytes_per_frame;
 
-  GST_INFO_OBJECT(trans, "mapped inbuf (%ld bytes)", map_info_in.size);
-  GST_INFO_OBJECT(trans, "mapped outbuf (%ld bytes)", map_info_out.size);
+    GST_DEBUG_OBJECT(graph, "mapped inbuf (%ld bytes) to read_ptr=%p", graph->input_buffer_state.map_info.size,
+                     graph->input_buffer_state.read_ptr);
+  } else {
+    GST_DEBUG_OBJECT(graph, "continuing to work on inbuf %p (read_ptr is at %p)", inbuf,
+                     graph->input_buffer_state.read_ptr);
+  }
 
-  // copy background over
-  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
-  // cairo_fill) but because we *know* that both image surfaces use the same
-  // format we can use memcpy which is probably quite a bit faster and we're on
-  // the hot path here.
-  memcpy(map_info_out.data, cairo_image_surface_get_data(graph->background_image), map_info_out.size);
+  while (graph->input_buffer_state.remaining_frames > 0) {
+    guint frames_to_process_until_next_measurement =
+        graph->measurement_interval_frames - graph->frames_since_last_measurement;
+    guint frames_to_process_until_next_video_frame =
+        graph->video_interval_frames - graph->frames_since_last_video_frame;
 
-  gst_buffer_unmap(inbuf, &map_info_in);
-  gst_buffer_unmap(*outbuf, &map_info_out);
+    guint frames_to_next_action =
+        MIN(frames_to_process_until_next_measurement, frames_to_process_until_next_video_frame);
+    guint frames_to_process = MIN(frames_to_next_action, graph->input_buffer_state.remaining_frames);
 
-  // simuilate consumed input buffer
-  GST_DEBUG_OBJECT(trans, "freeing input-buffer");
-  gst_buffer_unref(inbuf);
-  inbuf = trans->queued_buf = NULL;
+    GST_DEBUG_OBJECT(graph,
+                     "need to process %d frames until next measurement and "
+                     "%d frames until next video-frame. Buffer has %d frames left. "
+                     "going to process %d of %d frames",
+                     frames_to_process_until_next_measurement, frames_to_process_until_next_video_frame,
+                     graph->input_buffer_state.remaining_frames, frames_to_process,
+                     graph->input_buffer_state.total_frames);
 
-  if (ret != GST_FLOW_OK || *outbuf == NULL)
-    goto no_buffer;
+    gst_ebur128_add_frames(graph->state, format, graph->input_buffer_state.read_ptr, frames_to_process);
 
-  GST_INFO_OBJECT(trans, "using allocated buffer %p", *outbuf);
-  return ret;
+    graph->input_buffer_state.remaining_frames -= frames_to_process;
+    graph->input_buffer_state.read_ptr += frames_to_process;
+    graph->frames_since_last_video_frame += frames_to_process;
+    graph->frames_since_last_measurement += frames_to_process;
+    graph->frames_processed += frames_to_process;
 
-  /* ERRORS */
-no_buffer : {
-  *outbuf = NULL;
-  GST_WARNING_OBJECT(trans, "could not get buffer from pool: %s", gst_flow_get_name(ret));
-  return ret;
+    if (graph->frames_since_last_measurement >= graph->measurement_interval_frames) {
+      GST_DEBUG_OBJECT(graph, "taking measurement after %d audio-frames", graph->frames_since_last_measurement);
+      graph->frames_since_last_measurement = 0;
+      gst_ebur128graph_take_measurement(graph);
+    }
+
+    if (graph->frames_since_last_video_frame >= graph->video_interval_frames) {
+      GST_DEBUG_OBJECT(graph, "emitting video-frame after %d audio-frames", graph->frames_since_last_video_frame);
+      graph->frames_since_last_video_frame = 0;
+
+      GstFlowReturn ret = gst_ebur128graph_generate_video_frame(graph, outbuf);
+
+      GST_DEBUG_OBJECT(graph, "returning %s with outbuf=%p", gst_flow_get_name(ret), &outbuf);
+      return ret;
+    }
+  }
+
+  if (graph->input_buffer_state.remaining_frames == 0) {
+    GST_DEBUG_OBJECT(graph, "inbuf consumed completely, unmapping");
+    gst_buffer_unmap(inbuf, &graph->input_buffer_state.map_info);
+    graph->input_buffer_state.is_mapped = FALSE;
+
+    graph->input_buffer_state.read_ptr = NULL;
+    graph->input_buffer_state.total_frames = graph->input_buffer_state.remaining_frames = 0;
+  }
+
+  return GST_FLOW_OK;
 }
+
+static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf) {
+  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(graph);
+  GstBaseTransform *trans = GST_BASE_TRANSFORM(graph);
+
+  const guint sample_rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
+  GST_DEBUG_OBJECT(graph, "calling prepare buffer");
+  GstFlowReturn ret = transform_class->prepare_output_buffer(graph, trans->queued_buf, outbuf);
+
+#if 0
+  GstClockTime duration_processed = GST_FRAMES_TO_CLOCK_TIME(graph->frames_processed, sample_rate);
+
+  GstClockTime timestamp = graph->start_ts + duration_processed;
+  GstClockTime running_time = gst_segment_to_running_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+  GstClockTime stream_time = gst_segment_to_stream_time(&trans->segment, GST_FORMAT_TIME, timestamp);
+
+  GST_BUFFER_TIMESTAMP(&outbuf) = stream_time;
+#endif
+
+  // fill buffer
+
+  return ret;
 }
 
 static void gst_ebur128graph_init(GstEbur128Graph *graph) {
@@ -511,6 +576,7 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
 
   // measurement
   graph->properties.measurement = DEFAULT_MEASUREMENT;
+  graph->properties.timebase = 60 * GST_SECOND;
 
   // measurements
   graph->measurements.momentary = 0;
@@ -697,6 +763,52 @@ static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) 
   }
 }
 
+static void gst_ebur128graph_recalc_measurement_interval_frames(GstEbur128Graph *graph) {
+  GstClockTime measurement_interval = graph->properties.timebase / graph->positions.graph.w;
+  guint sample_rate = graph->audio_info.rate;
+
+  guint measurement_interval_frames = GST_CLOCK_TIME_TO_FRAMES(measurement_interval, sample_rate);
+
+  GST_INFO_OBJECT(graph,
+                  "timebase=%" GST_TIME_FORMAT " for a graph of w=%d at sample_rate=%d "
+                  "results in measurement_interval=%" GST_TIME_FORMAT ". "
+                  "this results in measurement_interval_frames=%d "
+                  "(number of audio-frames per measurement)",
+                  GST_TIME_ARGS(graph->properties.timebase), graph->positions.graph.w, sample_rate,
+                  GST_TIME_ARGS(measurement_interval), measurement_interval_frames);
+
+  if (measurement_interval_frames == 0) {
+    GST_WARNING_OBJECT(graph,
+                       "measurement_interval=%" GST_TIME_FORMAT " is too small, "
+                       "should be at least min=%" GST_TIME_FORMAT " for sample_rate=%u",
+                       GST_TIME_ARGS(measurement_interval), GST_TIME_ARGS(GST_FRAMES_TO_CLOCK_TIME(1, sample_rate)),
+                       sample_rate);
+    measurement_interval_frames = 1;
+  }
+
+  graph->measurement_interval_frames = measurement_interval_frames;
+}
+
+static void gst_ebur128graph_recalc_video_interval_frames(GstEbur128Graph *graph) {
+  guint sample_rate = graph->audio_info.rate;
+  guint video_interval_frames = sample_rate * graph->video_info.fps_d / graph->video_info.fps_n;
+
+  GST_INFO_OBJECT(graph,
+                  "framerate=%d/%d at sample_rate=%d "
+                  "results in video_interval_frames=%d "
+                  "(number of audio-frames per video-frame)",
+                  graph->video_info.fps_d, graph->video_info.fps_n, sample_rate, video_interval_frames);
+
+  if (video_interval_frames == 0) {
+    GST_WARNING_OBJECT(graph, "framerate=%d/%d is too high for sample_rate=%d", graph->video_info.fps_d,
+                       graph->video_info.fps_n, sample_rate);
+
+    video_interval_frames = 1;
+  }
+
+  graph->video_interval_frames = video_interval_frames;
+}
+
 static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // cleanup existing state
   gst_ebur128graph_destroy_libebur128(graph);
@@ -708,6 +820,10 @@ static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
 
   // re-calculate all positions
   gst_ebur128graph_calculate_positions(graph);
+
+  // re-calculate audio-frame intervals to take measurements and emit video-frames
+  gst_ebur128graph_recalc_measurement_interval_frames(graph);
+  gst_ebur128graph_recalc_video_interval_frames(graph);
 
   // render background
   GstVideoInfo *video_info = &graph->video_info;
@@ -805,18 +921,6 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   double num_scales_per_space = graph->positions.scale_spacing / font_height_scale;
   double show_every_nth = 1 / num_scales_per_space;
   graph->positions.scale_show_every = fmax(ceil(show_every_nth), 1);
-}
-
-static gboolean gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph, GstBuffer *audio) {
-  // Map and Analyze buffer
-  GstMapInfo map_info;
-  gst_buffer_map(audio, &map_info, GST_MAP_READ);
-
-  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_info);
-  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_info);
-  gint num_frames = map_info.size / bytes_per_frame;
-
-  return gst_ebur128_add_frames(graph->state, format, map_info.data, num_frames);
 }
 
 static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
