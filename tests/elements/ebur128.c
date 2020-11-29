@@ -261,7 +261,7 @@ GST_START_TEST(test_timestamps) {
 
     GstClockTime timestamp;
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_INFO("Gost timestamp=%ld, expected %ld", timestamp, expectation);
+    GST_INFO("Gost timestamp=%" GST_TIME_FORMAT ", expected %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp), GST_TIME_ARGS(expectation));
     fail_unless(timestamp == expectation);
 
     GstClockTime stream_time;
@@ -635,7 +635,7 @@ GST_START_TEST(test_large_buffers) {
     // validate timestamp
     structure = gst_message_get_structure(message);
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_WARNING("iteration=%d, timestamp=%ld", iteration, timestamp);
+    GST_WARNING("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
     fail_unless(timestamp == 100 * GST_MSECOND * (iteration + 1));
     gst_message_unref(message);
   }
@@ -652,7 +652,7 @@ GST_START_TEST(test_large_buffers) {
     // validate timestamp
     structure = gst_message_get_structure(message);
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_WARNING("iteration=%d, timestamp=%ld", iteration, timestamp);
+    GST_WARNING("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
     fail_unless(timestamp == (100 * GST_MSECOND * (iteration + 11)));
     gst_message_unref(message);
   }
