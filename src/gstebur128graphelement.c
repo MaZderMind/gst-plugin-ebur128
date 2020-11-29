@@ -387,17 +387,15 @@ static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadD
 
   switch (direction) {
   case GST_PAD_SRC:
+  case GST_PAD_SINK:
     *othersize = graph->video_info.size;
     GST_DEBUG_OBJECT(graph, "gst_ebur128graph_transform_size called for direction=GST_PAD_SRC, returning %ld",
                      *othersize);
     return TRUE;
 
-  case GST_PAD_SINK:
-  case GST_PAD_UNKNOWN:
+  default:
     return FALSE;
   }
-
-  return FALSE;
 }
 
 static GstFlowReturn gst_ebur128graph_dummy_transform(GstBaseTransform *trans, GstBuffer *inbuf, GstBuffer *outbuf) {
@@ -524,11 +522,11 @@ static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *grap
   GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(graph);
   GstBaseTransform *trans = GST_BASE_TRANSFORM(graph);
 
-  const guint sample_rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
   GST_DEBUG_OBJECT(graph, "calling prepare buffer");
-  GstFlowReturn ret = transform_class->prepare_output_buffer(graph, trans->queued_buf, outbuf);
+  GstFlowReturn ret = transform_class->prepare_output_buffer(GST_BASE_TRANSFORM(graph), trans->queued_buf, outbuf);
 
 #if 0
+  const guint sample_rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
   GstClockTime duration_processed = GST_FRAMES_TO_CLOCK_TIME(graph->frames_processed, sample_rate);
 
   GstClockTime timestamp = graph->start_ts + duration_processed;
