@@ -17,9 +17,16 @@ with it as you wish, but don't blame us if it doesn't work".
 
 Configure and build:
 
+    # For Building
+    apt install build-essential meson libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libebur128-dev libcairo-dev
+
+    # For Testing
+    apt install gstreamer1.0-tools gstreamer1.0-plugins-base
+
+    # Build
     make
 
-TRhe Makefile is just a shortcut to meson & ninja. See <https://mesonbuild.com/Quick-guide.html>
+The Makefile is just a shortcut to meson & ninja. See <https://mesonbuild.com/Quick-guide.html>
 on how to install the Meson build system and ninja.
 
 You can check if it has been built correctly with:
