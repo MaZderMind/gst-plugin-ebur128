@@ -435,14 +435,6 @@ static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, G
   GstBuffer *inbuf = trans->queued_buf;
   GST_DEBUG_OBJECT(graph, "generate_output called with inbuf=%p", inbuf);
 
-  // Manage Message-Timestamp
-  if (GST_BUFFER_FLAG_IS_SET(inbuf, GST_BUFFER_FLAG_DISCONT)) {
-    graph->start_ts = GST_BUFFER_TIMESTAMP(inbuf);
-  }
-  if (G_UNLIKELY(!GST_CLOCK_TIME_IS_VALID(graph->start_ts))) {
-    graph->start_ts = GST_BUFFER_TIMESTAMP(inbuf);
-  }
-
   GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_info);
   const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_info);
 
@@ -497,10 +489,10 @@ static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, G
 
     if (graph->frames_since_last_video_frame >= graph->video_interval_frames) {
       GST_DEBUG_OBJECT(graph, "emitting video-frame after %d audio-frames", graph->frames_since_last_video_frame);
-      graph->frames_since_last_video_frame = 0;
 
       GstFlowReturn ret = gst_ebur128graph_generate_video_frame(graph, outbuf);
 
+      graph->frames_since_last_video_frame = 0;
       GST_DEBUG_OBJECT(graph, "returning %s with outbuf=%p", gst_flow_get_name(ret), &outbuf);
       return ret;
     }
@@ -525,16 +517,13 @@ static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *grap
   GST_DEBUG_OBJECT(graph, "calling prepare buffer");
   GstFlowReturn ret = transform_class->prepare_output_buffer(GST_BASE_TRANSFORM(graph), trans->queued_buf, outbuf);
 
-#if 0
-  const guint sample_rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
-  GstClockTime duration_processed = GST_FRAMES_TO_CLOCK_TIME(graph->frames_processed, sample_rate);
+  GstClockTime buffer_end = graph->frames_processed * GST_SECOND / graph->audio_info.rate;
+  GST_BUFFER_TIMESTAMP(*outbuf) = graph->last_video_timestamp;
+  GST_BUFFER_DURATION(*outbuf) = buffer_end - graph->last_video_timestamp;
+  graph->last_video_timestamp = buffer_end;
 
-  GstClockTime timestamp = graph->start_ts + duration_processed;
-  GstClockTime running_time = gst_segment_to_running_time(&trans->segment, GST_FORMAT_TIME, timestamp);
-  GstClockTime stream_time = gst_segment_to_stream_time(&trans->segment, GST_FORMAT_TIME, timestamp);
-
-  GST_BUFFER_TIMESTAMP(&outbuf) = stream_time;
-#endif
+  GST_BUFFER_OFFSET(*outbuf) = graph->num_video_frames_processed;
+  GST_BUFFER_OFFSET_END(*outbuf) = ++graph->num_video_frames_processed;
 
   // fill buffer
 

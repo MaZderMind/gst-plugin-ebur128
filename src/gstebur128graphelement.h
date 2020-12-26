@@ -132,7 +132,9 @@ struct _GstEbur128Graph {
   // running state
   GstEbur128InputBufferState input_buffer_state;
   guint64 frames_processed;
-  GstClockTime start_ts;
+
+  GstClockTime last_video_timestamp;
+  guint64 num_video_frames_processed;
 
   guint frames_since_last_video_frame;
   guint frames_since_last_measurement;
