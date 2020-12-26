@@ -162,6 +162,7 @@ static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadD
                                                 gsize size, GstCaps *othercaps, gsize *othersize);
 static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf);
 static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf);
+static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph);
 
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
@@ -510,12 +511,47 @@ static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, G
   return GST_FLOW_OK;
 }
 
+static void gst_ebur128graph_fill_video_frame(GstEbur128Graph *graph, GstBuffer *outbuf) {
+  GstMapInfo map_info;
+  gst_buffer_map(outbuf, &map_info, GST_MAP_WRITE);
+  GST_DEBUG_OBJECT(graph, "mapped outbuf (%ld bytes)", map_info.size);
+
+  GstVideoInfo *video_info = &graph->video_info;
+  gint width = video_info->width;
+  gint height = video_info->height;
+
+  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, graph->video_info.finfo->name);
+
+  // copy background over
+  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
+  // cairo_fill) but because we *know* that both image surfaces use the same
+  // format we can use memcpy which is probably quite a bit faster and we're on
+  // the hot path here.
+  memcpy(map_info.data, cairo_image_surface_get_data(graph->background_image), map_info.size);
+
+  // create cairo image-surcface directly on the allocated buffer
+  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
+  cairo_surface_t *image =
+      cairo_image_surface_create_for_data(map_info.data, cairo_format, width, height, video_info->stride[0]);
+  cairo_t *ctx = cairo_create(image);
+
+  gst_ebur128graph_render_foreground(graph, ctx, width, height);
+
+  cairo_destroy(ctx);
+  cairo_surface_destroy(image);
+
+  gst_buffer_unmap(outbuf, &map_info);
+}
+
 static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf) {
   GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(graph);
   GstBaseTransform *trans = GST_BASE_TRANSFORM(graph);
 
   GST_DEBUG_OBJECT(graph, "calling prepare buffer");
   GstFlowReturn ret = transform_class->prepare_output_buffer(GST_BASE_TRANSFORM(graph), trans->queued_buf, outbuf);
+
+  GST_DEBUG_OBJECT(graph, "filled outbuf");
+  gst_ebur128graph_fill_video_frame(graph, *outbuf);
 
   GstClockTime buffer_end = graph->frames_processed * GST_SECOND / graph->audio_info.rate;
   GST_BUFFER_TIMESTAMP(*outbuf) = graph->last_video_timestamp;
@@ -525,7 +561,10 @@ static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *grap
   GST_BUFFER_OFFSET(*outbuf) = graph->num_video_frames_processed;
   GST_BUFFER_OFFSET_END(*outbuf) = ++graph->num_video_frames_processed;
 
-  // fill buffer
+  GST_DEBUG_OBJECT(
+      graph, "set outbuf meta: timestamp=%" GST_TIME_FORMAT " duration=%" GST_TIME_FORMAT "offset=%ld offset_end=%ld",
+      GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(*outbuf)), GST_TIME_ARGS(GST_BUFFER_DURATION(*outbuf)),
+      GST_BUFFER_OFFSET(*outbuf), GST_BUFFER_OFFSET_END(*outbuf));
 
   return ret;
 }
@@ -959,42 +998,3 @@ static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
 
   return TRUE;
 }
-
-#if 0
-static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffer *audio, GstVideoFrame *video) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
-  if (!gst_ebur128graph_add_audio_frames(graph, audio)) {
-    return FALSE;
-  }
-
-  if (!gst_ebur128graph_take_measurement(graph)) {
-    return FALSE;
-  }
-
-  GstVideoInfo *video_info = &visualizer->video_info;
-  gint width = video_info->width;
-  gint height = video_info->height;
-
-  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, visualizer->video_info.finfo->name);
-
-  // copy background over
-  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
-  // cairo_fill) but because we *know* that both image surfaces use the same
-  // format we can use memcpy which is probably quite a bit faster and we're on
-  // the hot path here.
-  memcpy(video->map->data, cairo_image_surface_get_data(graph->background_image), video->map->size);
-
-  // create cairo image-surcface directly on the allocated buffer
-  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
-  cairo_surface_t *image =
-      cairo_image_surface_create_for_data(video->map->data, cairo_format, width, height, video_info->stride[0]);
-  cairo_t *ctx = cairo_create(image);
-
-  gst_ebur128graph_render_foreground(graph, ctx, width, height);
-
-  cairo_destroy(ctx);
-  cairo_surface_destroy(image);
-
-  return TRUE;
-}
-#endif
