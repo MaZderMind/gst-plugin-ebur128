@@ -477,7 +477,7 @@ static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, G
     gst_ebur128_add_frames(graph->state, format, graph->input_buffer_state.read_ptr, frames_to_process);
 
     graph->input_buffer_state.remaining_frames -= frames_to_process;
-    graph->input_buffer_state.read_ptr += frames_to_process;
+    graph->input_buffer_state.read_ptr += frames_to_process * bytes_per_frame;
     graph->frames_since_last_video_frame += frames_to_process;
     graph->frames_since_last_measurement += frames_to_process;
     graph->frames_processed += frames_to_process;
