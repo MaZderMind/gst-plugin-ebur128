@@ -12,7 +12,6 @@ gst_dep = dependency('gstreamer-1.0', fallback : ['gstreamer', 'gst_dep'])
 gstbase_dep = dependency('gstreamer-base-1.0', fallback : ['gstreamer', 'gst_base_dep'])
 gstaudio_dep = dependency('gstreamer-audio-1.0', fallback : ['gst-plugins-base', 'audio_dep'])
 gstvideo_dep = dependency('gstreamer-video-1.0', fallback : ['gst-plugins-base', 'video_dep'])
-gstpbutils_dep = dependency('gstreamer-pbutils-1.0', fallback : ['gst-plugins-base', 'pbutils_dep'])
 
 libebur128_dep = dependency('libebur128')
 cairo_dep = dependency('cairo')
@@ -36,6 +35,7 @@ plugin_sources = [
   'src/gstebur128shared.c',
   'src/gstebur128element.c',
   'src/gstebur128graphelement.c',
+  'src/gstebur128graphrender.c',
 ]
 
 ebur128 = library('gstebur128',
@@ -46,7 +46,6 @@ ebur128 = library('gstebur128',
     gstbase_dep,
     gstaudio_dep,
     gstvideo_dep,
-    gstpbutils_dep,
 
     libebur128_dep,
     cairo_dep,

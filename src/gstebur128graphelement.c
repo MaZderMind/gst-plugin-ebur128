@@ -24,6 +24,7 @@
 #define GLIB_DISABLE_DEPRECATION_WARNINGS
 
 #include "gstebur128graphelement.h"
+#include "gstebur128graphrender.h"
 #include "gstebur128shared.h"
 #include <math.h>
 
@@ -124,6 +125,10 @@ static GType gst_ebur128graph_measurement_get_type(void) {
   "layout = (string) interleaved "
 
 #define SUPPORTED_VIDEO_CAPS_STRING GST_VIDEO_CAPS_MAKE("{ BGRx, BGRA }")
+#define PREFERRED_VIDEO_WIDTH 640
+#define PREFERRED_VIDEO_HEIGHT 480
+#define PREFERRED_VIDEO_FRAMERATE_NUMERATOR 30
+#define PREFERRED_VIDEO_FRAMERATE_DENOMINATOR 1
 
 static GstStaticPadTemplate sink_template_factory =
     GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_AUDIO_CAPS_STRING));
@@ -132,7 +137,7 @@ static GstStaticPadTemplate src_template_factory =
     GST_STATIC_PAD_TEMPLATE("src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_VIDEO_CAPS_STRING));
 
 #define gst_ebur128graph_parent_class parent_class
-G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_AUDIO_VISUALIZER);
+G_DEFINE_TYPE(GstEbur128Graph, gst_ebur128graph, GST_TYPE_BASE_TRANSFORM);
 
 /* forward declarations */
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph);
@@ -140,22 +145,24 @@ static void gst_ebur128graph_destroy_libebur128(GstEbur128Graph *graph);
 static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue *value, GParamSpec *pspec);
 static void gst_ebur128graph_finalize(GObject *object);
+static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph);
 
-static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer);
+static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph);
 static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph);
 static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph);
 static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph);
-static void gst_ebur128graph_render_background(GstEbur128Graph *graph, cairo_t *ctx, gint width, gint height);
-static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph, cairo_t *ctx, gint width, gint height);
-static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position);
-static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph, cairo_t *ctx);
-static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffer *audio, GstVideoFrame *video);
-static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx);
-static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx);
-static void gst_ebur128graph_render_gauge(GstEbur128Graph *graph, cairo_t *ctx);
-static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph, cairo_t *ctx);
 
-/* GObject vmethod implementations */
+static GstCaps *gst_ebur128graph_transform_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                GstCaps *filter);
+static GstCaps *gst_ebur128graph_fixate_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                             GstCaps *othercaps);
+static GstFlowReturn gst_ebur128graph_dummy_transform(GstBaseTransform *trans, GstBuffer *inbuf, GstBuffer *outbuf);
+static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *incaps, GstCaps *outcaps);
+static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                gsize size, GstCaps *othercaps, gsize *othersize);
+static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf);
+static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf);
+static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph);
 
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
@@ -163,14 +170,21 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
-  GstAudioVisualizerClass *audio_visualizer = (GstAudioVisualizerClass *)klass;
+  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_CLASS(klass);
 
-  gobject_class->set_property = gst_ebur128graph_set_property;
-  gobject_class->get_property = gst_ebur128graph_get_property;
-  gobject_class->finalize = gst_ebur128graph_finalize;
+  // configure vmethods
+  gobject_class->set_property = GST_DEBUG_FUNCPTR(gst_ebur128graph_set_property);
+  gobject_class->get_property = GST_DEBUG_FUNCPTR(gst_ebur128graph_get_property);
+  gobject_class->finalize = GST_DEBUG_FUNCPTR(gst_ebur128graph_finalize);
 
-  audio_visualizer->setup = GST_DEBUG_FUNCPTR(gst_ebur128graph_setup);
-  audio_visualizer->render = GST_DEBUG_FUNCPTR(gst_ebur128graph_render);
+  transform_class->transform_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_transform_caps);
+  transform_class->fixate_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_fixate_caps);
+  transform_class->transform = GST_DEBUG_FUNCPTR(
+      gst_ebur128graph_dummy_transform); // required to force base_transform out of passthrough mode, though it is never
+                                         // actually called because we implement out orn generate_output vmethod
+  transform_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128graph_set_caps);
+  transform_class->transform_size = GST_DEBUG_FUNCPTR(gst_ebur128graph_transform_size);
+  transform_class->generate_output = GST_DEBUG_FUNCPTR(gst_ebur128graph_generate_output);
 
   g_object_class_install_property(
       gobject_class, PROP_COLOR_BACKGROUND,
@@ -298,7 +312,267 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
                                         "Peter Körner <peter@mazdermind.de>");
 }
 
+static GstCaps *gst_ebur128graph_transform_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                GstCaps *filter) {
+  GstCaps *res;
+  switch (direction) {
+  case GST_PAD_SRC:
+    GST_DEBUG_OBJECT(
+        trans, "gst_ebur128graph_transform_caps called for direction=GST_PAD_SRC with caps=%" GST_PTR_FORMAT, caps);
+    res = gst_caps_from_string(SUPPORTED_AUDIO_CAPS_STRING);
+    GST_DEBUG_OBJECT(trans, "gst_ebur128graph_transform_caps returning caps=%" GST_PTR_FORMAT, res);
+    break;
+  case GST_PAD_SINK:
+    GST_DEBUG_OBJECT(
+        trans, "gst_ebur128graph_transform_caps called for direction=GST_PAD_SINK with caps=%" GST_PTR_FORMAT, caps);
+    res = gst_caps_from_string(SUPPORTED_VIDEO_CAPS_STRING);
+    GST_DEBUG_OBJECT(trans, "gst_ebur128graph_transform_caps returning caps=%" GST_PTR_FORMAT, res);
+    break;
+  case GST_PAD_UNKNOWN:
+    return NULL;
+  }
+
+  if (filter) {
+    GstCaps *intersection;
+
+    GST_DEBUG_OBJECT(trans, "Using filter caps %" GST_PTR_FORMAT, filter);
+    intersection = gst_caps_intersect_full(filter, res, GST_CAPS_INTERSECT_FIRST);
+    gst_caps_unref(res);
+    res = intersection;
+    GST_DEBUG_OBJECT(trans, "Intersection %" GST_PTR_FORMAT, res);
+  }
+
+  return res;
+}
+
+static GstCaps *gst_ebur128graph_fixate_caps(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                             GstCaps *othercaps) {
+  switch (direction) {
+  case GST_PAD_SRC:
+    GST_DEBUG_OBJECT(trans,
+                     "gst_ebur128graph_fixate_caps called for direction=GST_PAD_SINK with othercaps=%" GST_PTR_FORMAT,
+                     othercaps);
+    othercaps = gst_caps_fixate(othercaps);
+    break;
+  case GST_PAD_SINK:
+    GST_DEBUG_OBJECT(trans,
+                     "gst_ebur128graph_fixate_caps called for direction=GST_PAD_SRC with othercaps=%" GST_PTR_FORMAT,
+                     othercaps);
+    othercaps = gst_caps_make_writable(othercaps);
+    GstStructure *structure = gst_caps_get_structure(othercaps, 0);
+
+    gst_structure_fixate_field_nearest_int(structure, "width", PREFERRED_VIDEO_WIDTH);
+    gst_structure_fixate_field_nearest_int(structure, "height", PREFERRED_VIDEO_HEIGHT);
+
+    if (gst_structure_has_field(structure, "framerate")) {
+      gst_structure_fixate_field_nearest_fraction(structure, "framerate", PREFERRED_VIDEO_FRAMERATE_NUMERATOR,
+                                                  PREFERRED_VIDEO_FRAMERATE_DENOMINATOR);
+    } else {
+      gst_structure_set(structure, "framerate", GST_TYPE_FRACTION, PREFERRED_VIDEO_FRAMERATE_NUMERATOR,
+                        PREFERRED_VIDEO_FRAMERATE_DENOMINATOR, NULL);
+    }
+
+    othercaps = gst_caps_fixate(othercaps);
+    break;
+  case GST_PAD_UNKNOWN:
+    return NULL;
+  }
+
+  GST_DEBUG_OBJECT(trans, "fixated to %" GST_PTR_FORMAT, othercaps);
+  return othercaps;
+}
+
+static gboolean gst_ebur128graph_transform_size(GstBaseTransform *trans, GstPadDirection direction, GstCaps *caps,
+                                                gsize size, GstCaps *othercaps, gsize *othersize) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+
+  switch (direction) {
+  case GST_PAD_SRC:
+  case GST_PAD_SINK:
+    *othersize = graph->video_info.size;
+    GST_DEBUG_OBJECT(graph, "gst_ebur128graph_transform_size called for direction=GST_PAD_SRC, returning %ld",
+                     *othersize);
+    return TRUE;
+
+  default:
+    return FALSE;
+  }
+}
+
+static GstFlowReturn gst_ebur128graph_dummy_transform(GstBaseTransform *trans, GstBuffer *inbuf, GstBuffer *outbuf) {
+  GST_ERROR_OBJECT(trans, "transform should have never been called, logic is completely handled by generate_output");
+  return GST_FLOW_NOT_SUPPORTED;
+}
+
+static gboolean gst_ebur128graph_set_caps(GstBaseTransform *trans, GstCaps *incaps, GstCaps *outcaps) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+  GST_INFO_OBJECT(graph, "gst_ebur128graph_set_caps, incaps=%" GST_PTR_FORMAT " outcaps=%" GST_PTR_FORMAT, incaps,
+                  outcaps);
+
+  /* store audio-info */
+  if (!gst_audio_info_from_caps(&graph->audio_info, incaps)) {
+    GST_ERROR_OBJECT(graph, "Unhandled Input-Caps: %" GST_PTR_FORMAT, incaps);
+    return FALSE;
+  }
+
+  /* store video-info */
+  if (!gst_video_info_from_caps(&graph->video_info, outcaps)) {
+    GST_ERROR_OBJECT(graph, "Unhandled Output-Caps: %" GST_PTR_FORMAT, outcaps);
+    return FALSE;
+  }
+
+  gst_ebur128graph_setup(graph);
+
+  return TRUE;
+}
+
+/**
+ * This Method is called over and over with an input-buffer in trans->queued_buf until it does not produce any more
+ * output frames. The Buffer in trans->queued_buf can be of any size. It is ok to not return any output-buffers at all,
+ * 1 or more.
+ */
+static GstFlowReturn gst_ebur128graph_generate_output(GstBaseTransform *trans, GstBuffer **outbuf) {
+  GstEbur128Graph *graph = GST_EBUR128GRAPH(trans);
+  GstBuffer *inbuf = trans->queued_buf;
+  GST_DEBUG_OBJECT(graph, "generate_output called with inbuf=%p", inbuf);
+
+  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_info);
+  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_info);
+
+  // if buffer is not mapped yet, map it and calculate total_frames & remaining_frames
+  if (!graph->input_buffer_state.is_mapped) {
+    GST_DEBUG_OBJECT(graph, "inbuf is not mapped yet, mapping");
+    gst_buffer_map(inbuf, &graph->input_buffer_state.map_info, GST_MAP_READ);
+    graph->input_buffer_state.is_mapped = TRUE;
+
+    graph->input_buffer_state.read_ptr = graph->input_buffer_state.map_info.data;
+    graph->input_buffer_state.total_frames = graph->input_buffer_state.remaining_frames =
+        graph->input_buffer_state.map_info.size / bytes_per_frame;
+
+    GST_DEBUG_OBJECT(graph, "mapped inbuf (%ld bytes) to read_ptr=%p", graph->input_buffer_state.map_info.size,
+                     graph->input_buffer_state.read_ptr);
+  } else {
+    GST_DEBUG_OBJECT(graph, "continuing to work on inbuf %p (read_ptr is at %p)", inbuf,
+                     graph->input_buffer_state.read_ptr);
+  }
+
+  while (graph->input_buffer_state.remaining_frames > 0) {
+    guint frames_to_process_until_next_measurement =
+        graph->measurement_interval_frames - graph->frames_since_last_measurement;
+    guint frames_to_process_until_next_video_frame =
+        graph->video_interval_frames - graph->frames_since_last_video_frame;
+
+    guint frames_to_next_action =
+        MIN(frames_to_process_until_next_measurement, frames_to_process_until_next_video_frame);
+    guint frames_to_process = MIN(frames_to_next_action, graph->input_buffer_state.remaining_frames);
+
+    GST_DEBUG_OBJECT(graph,
+                     "need to process %d frames until next measurement and "
+                     "%d frames until next video-frame. Buffer has %d frames left. "
+                     "going to process %d of %d frames",
+                     frames_to_process_until_next_measurement, frames_to_process_until_next_video_frame,
+                     graph->input_buffer_state.remaining_frames, frames_to_process,
+                     graph->input_buffer_state.total_frames);
+
+    gst_ebur128_add_frames(graph->state, format, graph->input_buffer_state.read_ptr, frames_to_process);
+
+    graph->input_buffer_state.remaining_frames -= frames_to_process;
+    graph->input_buffer_state.read_ptr += frames_to_process * bytes_per_frame;
+    graph->frames_since_last_video_frame += frames_to_process;
+    graph->frames_since_last_measurement += frames_to_process;
+    graph->frames_processed += frames_to_process;
+
+    if (graph->frames_since_last_measurement >= graph->measurement_interval_frames) {
+      GST_DEBUG_OBJECT(graph, "taking measurement after %d audio-frames", graph->frames_since_last_measurement);
+      graph->frames_since_last_measurement = 0;
+      gst_ebur128graph_take_measurement(graph);
+    }
+
+    if (graph->frames_since_last_video_frame >= graph->video_interval_frames) {
+      GST_DEBUG_OBJECT(graph, "emitting video-frame after %d audio-frames", graph->frames_since_last_video_frame);
+
+      GstFlowReturn ret = gst_ebur128graph_generate_video_frame(graph, outbuf);
+
+      graph->frames_since_last_video_frame = 0;
+      GST_DEBUG_OBJECT(graph, "returning %s with outbuf=%p", gst_flow_get_name(ret), &outbuf);
+      return ret;
+    }
+  }
+
+  if (graph->input_buffer_state.remaining_frames == 0) {
+    GST_DEBUG_OBJECT(graph, "inbuf consumed completely, unmapping");
+    gst_buffer_unmap(inbuf, &graph->input_buffer_state.map_info);
+    graph->input_buffer_state.is_mapped = FALSE;
+
+    graph->input_buffer_state.read_ptr = NULL;
+    graph->input_buffer_state.total_frames = graph->input_buffer_state.remaining_frames = 0;
+  }
+
+  return GST_FLOW_OK;
+}
+
+static void gst_ebur128graph_fill_video_frame(GstEbur128Graph *graph, GstBuffer *outbuf) {
+  GstMapInfo map_info;
+  gst_buffer_map(outbuf, &map_info, GST_MAP_WRITE);
+  GST_DEBUG_OBJECT(graph, "mapped outbuf (%ld bytes)", map_info.size);
+
+  GstVideoInfo *video_info = &graph->video_info;
+  gint width = video_info->width;
+  gint height = video_info->height;
+
+  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, graph->video_info.finfo->name);
+
+  // copy background over
+  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
+  // cairo_fill) but because we *know* that both image surfaces use the same
+  // format we can use memcpy which is probably quite a bit faster and we're on
+  // the hot path here.
+  memcpy(map_info.data, cairo_image_surface_get_data(graph->background_image), map_info.size);
+
+  // create cairo image-surcface directly on the allocated buffer
+  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
+  cairo_surface_t *image =
+      cairo_image_surface_create_for_data(map_info.data, cairo_format, width, height, video_info->stride[0]);
+  cairo_t *ctx = cairo_create(image);
+
+  gst_ebur128graph_render_foreground(graph, ctx, width, height);
+
+  cairo_destroy(ctx);
+  cairo_surface_destroy(image);
+
+  gst_buffer_unmap(outbuf, &map_info);
+}
+
+static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *graph, GstBuffer **outbuf) {
+  GstBaseTransformClass *transform_class = GST_BASE_TRANSFORM_GET_CLASS(graph);
+  GstBaseTransform *trans = GST_BASE_TRANSFORM(graph);
+
+  GST_DEBUG_OBJECT(graph, "calling prepare buffer");
+  GstFlowReturn ret = transform_class->prepare_output_buffer(GST_BASE_TRANSFORM(graph), trans->queued_buf, outbuf);
+
+  GST_DEBUG_OBJECT(graph, "filled outbuf");
+  gst_ebur128graph_fill_video_frame(graph, *outbuf);
+
+  GstClockTime buffer_end = graph->frames_processed * GST_SECOND / graph->audio_info.rate;
+  GST_BUFFER_TIMESTAMP(*outbuf) = graph->last_video_timestamp;
+  GST_BUFFER_DURATION(*outbuf) = buffer_end - graph->last_video_timestamp;
+  graph->last_video_timestamp = buffer_end;
+
+  GST_BUFFER_OFFSET(*outbuf) = graph->num_video_frames_processed;
+  GST_BUFFER_OFFSET_END(*outbuf) = ++graph->num_video_frames_processed;
+
+  GST_DEBUG_OBJECT(
+      graph, "set outbuf meta: timestamp=%" GST_TIME_FORMAT " duration=%" GST_TIME_FORMAT " offset=%ld offset_end=%ld",
+      GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(*outbuf)), GST_TIME_ARGS(GST_BUFFER_DURATION(*outbuf)),
+      GST_BUFFER_OFFSET(*outbuf), GST_BUFFER_OFFSET_END(*outbuf));
+
+  return ret;
+}
+
 static void gst_ebur128graph_init(GstEbur128Graph *graph) {
+  gst_audio_info_init(&graph->audio_info);
+  gst_video_info_init(&graph->video_info);
+
   // colors
   graph->properties.color_background = DEFAULT_COLOR_BACKGROUND;
   graph->properties.color_border = DEFAULT_COLOR_BORDER;
@@ -328,6 +602,7 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
 
   // measurement
   graph->properties.measurement = DEFAULT_MEASUREMENT;
+  graph->properties.timebase = 60 * GST_SECOND;
 
   // measurements
   graph->measurements.momentary = 0;
@@ -346,8 +621,8 @@ static void gst_ebur128graph_finalize(GObject *object) {
 }
 
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph) {
-  gint rate = GST_AUDIO_INFO_RATE(&graph->audio_visualizer.ainfo);
-  gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_visualizer.ainfo);
+  gint rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
+  gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
   gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA;
 
   graph->state = ebur128_init(channels, rate, mode);
@@ -500,7 +775,7 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
 }
 
 static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) {
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   switch (video_info->finfo->format) {
   case GST_VIDEO_FORMAT_BGRx:
     return CAIRO_FORMAT_RGB24;
@@ -514,9 +789,53 @@ static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph) 
   }
 }
 
-static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
+static void gst_ebur128graph_recalc_measurement_interval_frames(GstEbur128Graph *graph) {
+  GstClockTime measurement_interval = graph->properties.timebase / graph->positions.graph.w;
+  guint sample_rate = graph->audio_info.rate;
 
+  guint measurement_interval_frames = GST_CLOCK_TIME_TO_FRAMES(measurement_interval, sample_rate);
+
+  GST_INFO_OBJECT(graph,
+                  "timebase=%" GST_TIME_FORMAT " for a graph of w=%d at sample_rate=%d "
+                  "results in measurement_interval=%" GST_TIME_FORMAT ". "
+                  "this results in measurement_interval_frames=%d "
+                  "(number of audio-frames per measurement)",
+                  GST_TIME_ARGS(graph->properties.timebase), graph->positions.graph.w, sample_rate,
+                  GST_TIME_ARGS(measurement_interval), measurement_interval_frames);
+
+  if (measurement_interval_frames == 0) {
+    GST_WARNING_OBJECT(graph,
+                       "measurement_interval=%" GST_TIME_FORMAT " is too small, "
+                       "should be at least min=%" GST_TIME_FORMAT " for sample_rate=%u",
+                       GST_TIME_ARGS(measurement_interval), GST_TIME_ARGS(GST_FRAMES_TO_CLOCK_TIME(1, sample_rate)),
+                       sample_rate);
+    measurement_interval_frames = 1;
+  }
+
+  graph->measurement_interval_frames = measurement_interval_frames;
+}
+
+static void gst_ebur128graph_recalc_video_interval_frames(GstEbur128Graph *graph) {
+  guint sample_rate = graph->audio_info.rate;
+  guint video_interval_frames = sample_rate * graph->video_info.fps_d / graph->video_info.fps_n;
+
+  GST_INFO_OBJECT(graph,
+                  "framerate=%d/%d at sample_rate=%d "
+                  "results in video_interval_frames=%d "
+                  "(number of audio-frames per video-frame)",
+                  graph->video_info.fps_d, graph->video_info.fps_n, sample_rate, video_interval_frames);
+
+  if (video_interval_frames == 0) {
+    GST_WARNING_OBJECT(graph, "framerate=%d/%d is too high for sample_rate=%d", graph->video_info.fps_d,
+                       graph->video_info.fps_n, sample_rate);
+
+    video_interval_frames = 1;
+  }
+
+  graph->video_interval_frames = video_interval_frames;
+}
+
+static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // cleanup existing state
   gst_ebur128graph_destroy_libebur128(graph);
   gst_ebur128graph_destroy_cairo(graph);
@@ -528,8 +847,12 @@ static gboolean gst_ebur128graph_setup(GstAudioVisualizer *visualizer) {
   // re-calculate all positions
   gst_ebur128graph_calculate_positions(graph);
 
+  // re-calculate audio-frame intervals to take measurements and emit video-frames
+  gst_ebur128graph_recalc_measurement_interval_frames(graph);
+  gst_ebur128graph_recalc_video_interval_frames(graph);
+
   // render background
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
   gst_ebur128graph_render_background(graph, graph->background_context, width, height);
@@ -559,7 +882,7 @@ static void gst_ebur128graph_destroy_cairo(GstEbur128Graph *graph) {
 }
 
 static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph) {
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
 
@@ -575,7 +898,7 @@ static void gst_ebur128graph_init_cairo(GstEbur128Graph *graph) {
 
 static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   cairo_t *ctx = graph->background_context;
-  GstVideoInfo *video_info = &graph->audio_visualizer.vinfo;
+  GstVideoInfo *video_info = &graph->video_info;
   gint width = video_info->width;
   gint height = video_info->height;
 
@@ -626,18 +949,6 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   graph->positions.scale_show_every = fmax(ceil(show_every_nth), 1);
 }
 
-static gboolean gst_ebur128graph_add_audio_frames(GstEbur128Graph *graph, GstBuffer *audio) {
-  // Map and Analyze buffer
-  GstMapInfo map_info;
-  gst_buffer_map(audio, &map_info, GST_MAP_READ);
-
-  GstAudioFormat format = GST_AUDIO_INFO_FORMAT(&graph->audio_visualizer.ainfo);
-  const gint bytes_per_frame = GST_AUDIO_INFO_BPF(&graph->audio_visualizer.ainfo);
-  gint num_frames = map_info.size / bytes_per_frame;
-
-  return gst_ebur128_add_frames(graph->state, format, map_info.data, num_frames);
-}
-
 static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
   double momentary;  // momentary loudness (last 400ms) in LUFS
   double short_term; // short-term loudness (last 3s) in LUFS
@@ -686,257 +997,4 @@ static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
   }
 
   return TRUE;
-}
-
-static gboolean gst_ebur128graph_render(GstAudioVisualizer *visualizer, GstBuffer *audio, GstVideoFrame *video) {
-  GstEbur128Graph *graph = GST_EBUR128GRAPH(visualizer);
-  if (!gst_ebur128graph_add_audio_frames(graph, audio)) {
-    return FALSE;
-  }
-
-  if (!gst_ebur128graph_take_measurement(graph)) {
-    return FALSE;
-  }
-
-  GstVideoInfo *video_info = &visualizer->vinfo;
-  gint width = video_info->width;
-  gint height = video_info->height;
-
-  GST_LOG_OBJECT(graph, "Render w=%d h=%d, fmt=%s", width, height, visualizer->vinfo.finfo->name);
-
-  // copy background over
-  // this can also be done with cairo (cairo_set_source_surface, cairo_rect,
-  // cairo_fill) but because we *know* that both image surfaces use the same
-  // format we can use memcpy which is probably quite a bit faster and we're on
-  // the hot path here.
-  memcpy(video->map->data, cairo_image_surface_get_data(graph->background_image), video->map->size);
-
-  // create cairo image-surcface directly on the allocated buffer
-  cairo_format_t cairo_format = gst_ebur128graph_get_cairo_format(graph);
-  cairo_surface_t *image =
-      cairo_image_surface_create_for_data(video->map->data, cairo_format, width, height, video_info->stride[0]);
-  cairo_t *ctx = cairo_create(image);
-
-  gst_ebur128graph_render_foreground(graph, ctx, width, height);
-
-  cairo_destroy(ctx);
-  cairo_surface_destroy(image);
-
-  return TRUE;
-}
-
-/**
- * ARGB is kind of a standard when it comes to specifying colors in GStreamer
- * It is also used in the videotestsrc element and some others
- */
-static void cairo_set_source_rgba_from_argb_int(cairo_t *ctx, int argb_color) {
-  double a = (double)(argb_color >> 24 & 0xFF) / 255.;
-  double r = (double)(argb_color >> 16 & 0xFF) / 255.;
-  double g = (double)(argb_color >> 8 & 0xFF) / 255.;
-  double b = (double)(argb_color & 0xFF) / 255.;
-  cairo_set_source_rgba(ctx, r, g, b, a);
-}
-
-/**
- * Called when the Size of the Target-Surface changed. Draws all background
- * elements that do not change dynamicly
- */
-static void gst_ebur128graph_render_background(GstEbur128Graph *graph, cairo_t *ctx, gint width, gint height) {
-  // border stroke
-  cairo_set_line_width(ctx, 1.0);
-
-  // background
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_background);
-  cairo_rectangle(ctx, 0, 0, width, height);
-  cairo_fill(ctx);
-
-  // scale
-  gst_ebur128graph_render_scale_texts(graph, ctx);
-
-  // graph: color areas
-  gst_ebur128graph_render_color_areas(graph, ctx, &graph->positions.graph);
-
-  // graph: border
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_border);
-  cairo_rectangle(ctx, graph->positions.graph.x + .5, graph->positions.graph.y + .5, graph->positions.graph.w - 1,
-                  graph->positions.graph.h - 1);
-  cairo_stroke(ctx);
-
-  // gauge: color areas
-  gst_ebur128graph_render_color_areas(graph, ctx, &graph->positions.gauge);
-
-  // gauge: border
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_border);
-  cairo_rectangle(ctx, graph->positions.gauge.x + .5, graph->positions.gauge.y + .5, graph->positions.gauge.w - 1,
-                  graph->positions.gauge.h - 1);
-  cairo_stroke(ctx);
-}
-
-static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position) {
-  gint num_too_loud = abs(graph->properties.scale_from);
-  gint num_loudness_ok = 2;
-  gint num_not_loud_enough = abs(graph->properties.scale_to);
-
-  double height_too_loud = ceil(graph->positions.scale_spacing * num_too_loud) - 1;
-  double height_loudness_ok = ceil(graph->positions.scale_spacing * num_loudness_ok) - 1;
-  double height_not_loud_enough = ceil(graph->positions.scale_spacing * num_not_loud_enough) - 1;
-
-  // too_loud
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_too_loud);
-  cairo_rectangle(ctx, position->x + 1, position->y + 1, position->w - 2, height_too_loud);
-  cairo_fill(ctx);
-
-  // loudness_ok
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_loudness_ok);
-  cairo_rectangle(ctx, position->x + 1, position->y + 1 + height_too_loud, position->w - 2, height_loudness_ok);
-  cairo_fill(ctx);
-
-  // not_loud_enough
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_not_loud_enough);
-  cairo_rectangle(ctx, position->x + 1, position->y + 1 + height_too_loud + height_loudness_ok, position->w - 2,
-                  height_not_loud_enough);
-  cairo_fill(ctx);
-}
-
-static void gst_ebur128graph_with_sign(char *buffer, size_t len, gint num) {
-  if (num == 0) {
-    g_snprintf(buffer, len, "%i", abs(num));
-  } else {
-    const char sign = num < 0 ? '-' : '+';
-    g_snprintf(buffer, len, "%c%i", sign, abs(num));
-  }
-}
-
-static void gst_ebur128graph_scale_text(GstEbur128Graph *graph, char *buffer, size_t len, gint scale_index) {
-  gint scale_num;
-  if (graph->properties.scale_mode == GST_EBUR128_SCALE_MODE_RELATIVE) {
-    scale_num = graph->properties.scale_from - scale_index;
-  } else {
-    scale_num = graph->properties.scale_from - scale_index + graph->properties.scale_target;
-  }
-
-  gst_ebur128graph_with_sign(buffer, len, scale_num);
-}
-
-static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph, cairo_t *ctx) {
-  cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-  cairo_set_font_size(ctx, graph->properties.font_size_scale);
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_scale);
-
-  gchar scale_text[10];
-  for (gint scale_index = 0; scale_index < graph->positions.num_scales;
-       scale_index += graph->positions.scale_show_every) {
-    gst_ebur128graph_scale_text(graph, scale_text, 10, scale_index);
-
-    cairo_text_extents_t extents;
-    cairo_text_extents(ctx, scale_text, &extents);
-
-    gint text_x = graph->positions.scale.x + graph->positions.scale.w - extents.width;
-    double text_y = graph->positions.scale.y +
-                    ceil(graph->positions.scale_spacing * scale_index + graph->positions.scale_spacing) +
-                    (extents.height / 2 - 1);
-
-    cairo_move_to(ctx, text_x, text_y);
-    cairo_show_text(ctx, scale_text);
-  }
-
-  cairo_fill(ctx);
-}
-
-/**
- * Called for every Frame. The Background has already be copied over. Draws all
- * foreground elements that do change dynamicly.
- */
-static void gst_ebur128graph_render_foreground(GstEbur128Graph *graph, cairo_t *ctx, gint width, gint height) {
-  gst_ebur128graph_render_header(graph, ctx);
-  gst_ebur128graph_render_graph(graph, ctx);
-  gst_ebur128graph_render_gauge(graph, ctx);
-  gst_ebur128graph_render_scale_lines(graph, ctx);
-}
-
-static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx) {
-  const gchar *unit = graph->properties.scale_mode == GST_EBUR128_SCALE_MODE_ABSOLUTE ? "LUFS" : "LU";
-  const gdouble correction =
-      graph->properties.scale_mode == GST_EBUR128_SCALE_MODE_ABSOLUTE ? 0.0 : graph->properties.scale_target;
-
-  gchar header_str[200];
-  g_snprintf(header_str, 200,
-             "TARGET: %+d LUFS | "
-             "M: %+7.2f %s | "
-             "S: %+7.2f %s | "
-             "I: %+7.2f %s | "
-             "LRA: %+7.2f LU",
-             graph->properties.scale_target, graph->measurements.momentary - correction, unit,
-             graph->measurements.short_term - correction, unit, graph->measurements.global - correction, unit,
-             graph->measurements.range);
-
-  cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
-  cairo_set_font_size(ctx, graph->properties.font_size_header);
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_header);
-  cairo_move_to(ctx, graph->positions.header.x, graph->positions.header.y + graph->positions.header.h + .5);
-  cairo_show_text(ctx, header_str);
-  cairo_fill(ctx);
-}
-
-static void gst_ebur128graph_render_graph_add_datapoint(GstEbur128Graph *graph, cairo_t *ctx,
-                                                        const gint datapoint_index, const gint data_point_zero_y,
-                                                        gint *data_point_x) {
-  gdouble measurement = graph->measurements.history[datapoint_index];
-  gdouble value_relative_to_target = fmax(measurement - graph->properties.scale_target, graph->properties.scale_to);
-
-  gint data_point_delta_y = (value_relative_to_target - graph->properties.scale_to) * graph->positions.scale_spacing +
-                            graph->positions.scale_spacing - 2;
-  cairo_line_to(ctx, *data_point_x, data_point_zero_y - data_point_delta_y);
-
-  (*data_point_x)++;
-}
-
-static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx) {
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_graph);
-  gint data_point_x = graph->positions.graph.x + 1;
-  gint data_point_zero_y = graph->positions.graph.y + graph->positions.graph.h - 1;
-  cairo_move_to(ctx, data_point_x, data_point_zero_y);
-
-  for (gint i = graph->measurements.history_head; i < graph->measurements.history_size; i++) {
-    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, &data_point_x);
-  }
-  for (gint i = 0; i < graph->measurements.history_head; i++) {
-    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, &data_point_x);
-  }
-
-  data_point_x += 1;
-  cairo_line_to(ctx, data_point_x, data_point_zero_y);
-  cairo_line_to(ctx, data_point_x + graph->positions.graph.w - 1, data_point_zero_y);
-  cairo_fill(ctx);
-}
-
-static void gst_ebur128graph_render_gauge(GstEbur128Graph *graph, cairo_t *ctx) {
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_graph);
-  gdouble measurement = graph->measurements.history[graph->measurements.history_head - 1];
-  gdouble value_relative_to_target = fmax(measurement - graph->properties.scale_target, graph->properties.scale_to);
-
-  gint data_point_delta_y = (value_relative_to_target - graph->properties.scale_to) * graph->positions.scale_spacing +
-                            graph->positions.scale_spacing - 2;
-
-  cairo_rectangle(ctx, graph->positions.gauge.x + 1, graph->positions.gauge.y + graph->positions.gauge.h - 1,
-                  graph->positions.gauge.w - 2, -data_point_delta_y);
-  cairo_fill(ctx);
-}
-
-static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph, cairo_t *ctx) {
-  cairo_set_line_width(ctx, 1.0);
-  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_scale_lines);
-
-  for (gint scale_index = 0; scale_index < graph->positions.num_scales; scale_index++) {
-    double y = graph->positions.gauge.y +
-               ceil(scale_index * graph->positions.scale_spacing + graph->positions.scale_spacing) + .5;
-
-    cairo_move_to(ctx, graph->positions.gauge.x + 1, y);
-    cairo_line_to(ctx, graph->positions.gauge.x + graph->positions.gauge.w - 1, y);
-
-    cairo_move_to(ctx, graph->positions.graph.x + 1, y);
-    cairo_line_to(ctx, graph->positions.graph.x + graph->positions.graph.w - 1, y);
-  }
-
-  cairo_stroke(ctx);
 }

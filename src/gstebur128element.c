@@ -105,9 +105,18 @@ static void gst_ebur128_class_init(GstEbur128Class *klass) {
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
   GstBaseTransformClass *trans_class = GST_BASE_TRANSFORM_CLASS(klass);
 
+  // configure vmethods
   gobject_class->set_property = gst_ebur128_set_property;
   gobject_class->get_property = gst_ebur128_get_property;
   gobject_class->finalize = gst_ebur128_finalize;
+
+  trans_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128_set_caps);
+  trans_class->start = GST_DEBUG_FUNCPTR(gst_ebur128_start);
+  trans_class->transform_ip = GST_DEBUG_FUNCPTR(gst_ebur128_transform_ip);
+  trans_class->sink_event = GST_DEBUG_FUNCPTR(gst_ebur128_sink_event);
+
+  // enable passthrough
+  trans_class->passthrough_on_same_caps = TRUE;
 
   // configure gobject properties
   g_object_class_install_property(gobject_class, PROP_MOMENTARY,
@@ -180,15 +189,6 @@ static void gst_ebur128_class_init(GstEbur128Class *klass) {
                                         "Calculates the EBU-R 128 Loudness of an Audio-Stream and "
                                         "emits them as Message",
                                         "Peter Körner <peter@mazdermind.de>");
-
-  // configure vmethods
-  trans_class->set_caps = GST_DEBUG_FUNCPTR(gst_ebur128_set_caps);
-  trans_class->start = GST_DEBUG_FUNCPTR(gst_ebur128_start);
-  trans_class->transform_ip = GST_DEBUG_FUNCPTR(gst_ebur128_transform_ip);
-  trans_class->sink_event = GST_DEBUG_FUNCPTR(gst_ebur128_sink_event);
-
-  // enable passthrough
-  trans_class->passthrough_on_same_caps = TRUE;
 }
 
 static void gst_ebur128_init(GstEbur128 *filter) {
@@ -268,11 +268,10 @@ static void gst_ebur128_reinit_libebur128_if_mode_changed(GstEbur128 *filter) {
   gint new_mode = gst_ebur128_calculate_libebur128_mode(filter);
   gint current_mode = filter->state->mode;
   if (current_mode != new_mode) {
-    GST_LOG_OBJECT(
-        filter,
-        "libebur128 Mode has changed from 0x%x to 0x%x, Destroying and "
-        "Re-Initializing libebur128 state",
-        current_mode, new_mode);
+    GST_LOG_OBJECT(filter,
+                   "libebur128 Mode has changed from 0x%x to 0x%x, Destroying and "
+                   "Re-Initializing libebur128 state",
+                   current_mode, new_mode);
     gst_ebur128_destroy_libebur128(filter);
     gst_ebur128_init_libebur128(filter);
   }
