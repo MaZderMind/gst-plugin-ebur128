@@ -60,7 +60,8 @@ enum {
   PROP_FONT_SIZE_HEADER,
   PROP_FONT_SIZE_SCALE,
 
-  PROP_MEASUREMENT
+  PROP_MEASUREMENT,
+  PROP_TIMEBASE
 };
 
 #define DEFAULT_COLOR_BACKGROUND 0xFF000000
@@ -87,6 +88,7 @@ enum {
 #define DEFAULT_FONT_SIZE_SCALE 8.0
 
 #define DEFAULT_MEASUREMENT GST_EBUR128_MEASUREMENT_SHORT_TERM
+#define DEFAULT_TIMEBASE (60 * GST_SECOND)
 
 #define GST_TYPE_EBUR128GRAPH_SCALE_MODE (gst_ebur128graph_scale_mode_get_type())
 static GType gst_ebur128graph_scale_mode_get_type(void) {
@@ -302,6 +304,13 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
                                   g_param_spec_enum("measurement", "Measurement to Graph", "Measurement to Graph",
                                                     GST_TYPE_EBUR128GRAPH_MEASUREMENT, DEFAULT_MEASUREMENT,
                                                     G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_TIMEBASE,
+      g_param_spec_uint64("timebase", "Timebase", "Time as displayed on the X-Axis (in nanoseconds)",
+                          /* MIN */ 0,
+                          /* MAX */ G_MAXUINT64, DEFAULT_TIMEBASE,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
   gst_element_class_add_static_pad_template(element_class, &src_template_factory);
@@ -602,7 +611,7 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
 
   // measurement
   graph->properties.measurement = DEFAULT_MEASUREMENT;
-  graph->properties.timebase = 60 * GST_SECOND;
+  graph->properties.timebase = DEFAULT_TIMEBASE;
 
   // measurements
   graph->measurements.momentary = 0;
@@ -701,6 +710,9 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
   case PROP_MEASUREMENT:
     graph->properties.measurement = g_value_get_enum(value);
     break;
+  case PROP_TIMEBASE:
+    graph->properties.timebase = g_value_get_uint64(value);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -767,6 +779,9 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
     break;
   case PROP_MEASUREMENT:
     g_value_set_enum(value, graph->properties.measurement);
+    break;
+  case PROP_TIMEBASE:
+    g_value_set_uint64(value, graph->properties.timebase);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
