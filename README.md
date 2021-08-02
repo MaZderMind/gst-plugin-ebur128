@@ -34,11 +34,11 @@ You can check if it has been built correctly with:
     make inspect
 
     make inspect-ebur128
-    make inspect-ebur128display
+    make inspect-ebur128graph
 
 And Test it as with:
 
     make run-ebur128
-    make run-ebur128display
+    make run-ebur128graph
 
 [MIT]: http://www.opensource.org/licenses/mit-license.php or COPYING.MIT
