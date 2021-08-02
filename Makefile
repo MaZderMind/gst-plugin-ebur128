@@ -13,13 +13,13 @@ clean: builddir
 format:
 	clang-format -i src/*.[ch] tests/elements/*.[ch]
 
-inspect:
+inspect: build
 	gst-inspect-1.0 builddir/libgstebur128.so
 
-inspect-ebur128:
+inspect-ebur128: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-inspect-1.0 ebur128
 
-inspect-ebur128graph:
+inspect-ebur128graph: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-inspect-1.0 ebur128graph
 
 run-tests: builddir
