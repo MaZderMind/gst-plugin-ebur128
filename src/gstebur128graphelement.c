@@ -562,7 +562,7 @@ static GstFlowReturn gst_ebur128graph_generate_video_frame(GstEbur128Graph *grap
   GST_BUFFER_OFFSET_END(*outbuf) = ++graph->num_video_frames_processed;
 
   GST_DEBUG_OBJECT(
-      graph, "set outbuf meta: timestamp=%" GST_TIME_FORMAT " duration=%" GST_TIME_FORMAT "offset=%ld offset_end=%ld",
+      graph, "set outbuf meta: timestamp=%" GST_TIME_FORMAT " duration=%" GST_TIME_FORMAT " offset=%ld offset_end=%ld",
       GST_TIME_ARGS(GST_BUFFER_TIMESTAMP(*outbuf)), GST_TIME_ARGS(GST_BUFFER_DURATION(*outbuf)),
       GST_BUFFER_OFFSET(*outbuf), GST_BUFFER_OFFSET_END(*outbuf));
 
