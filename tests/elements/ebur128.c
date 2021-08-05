@@ -692,7 +692,7 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_properties, test_prop_post_messages);
   // prop "interval" is thoroughly tested in the buffer-size testcase
 
-  TCase *tc_buffer_size = tcase_create("buffer-size");
+  TCase *tc_buffer_size = tcase_create("buffer_size");
   suite_add_tcase(s, tc_buffer_size);
   tcase_add_test(tc_buffer_size, test_small_buffers);
   tcase_add_test(tc_buffer_size, test_medium_buffers);
