@@ -21,6 +21,7 @@ endif
 tests = [
   # name, skip?, extra_deps, extra_sources
   [ 'elements/ebur128', false, [gst_dep, gstaudio_dep, libebur128_dep] ],
+  [ 'elements/ebur128graph', false, [gst_dep, gstaudio_dep, libebur128_dep] ],
 ]
 
 
