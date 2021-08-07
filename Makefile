@@ -25,15 +25,18 @@ inspect-ebur128graph: build
 run-tests: builddir
 	cd builddir && meson test -v
 
+run-example-py: builddir
+	GST_PLUGIN_PATH=$(realpath builddir) examples/example.py
+
 run-ebur128: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
-	  filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
+	  filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
       ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true interval=100000000 ! \
 	  autoaudiosink
 
 run-ebur128-with-seek: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
-		filesrc location=example-audio/music.mp3 ! \
+		filesrc location=examples/music.mp3 ! \
 		mpegaudioparse ! mpg123audiodec ! \
 		ebur128 ! \
 		navseek ! \
@@ -44,7 +47,7 @@ run-ebur128-with-seek: build
 
 run-ebur128graph: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
-		filesrc location=example-audio/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
+		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
 		t. ! queue ! ebur128graph ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 

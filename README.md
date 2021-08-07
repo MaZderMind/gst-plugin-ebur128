@@ -21,7 +21,7 @@ Configure and build:
     apt install build-essential meson libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libebur128-dev libcairo-dev
 
     # For Testing
-    apt install gstreamer1.0-tools gstreamer1.0-plugins-base
+    apt install gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
     # Build
     make
@@ -40,5 +40,11 @@ And Test it as with:
 
     make run-ebur128
     make run-ebur128graph
+
+## Use in your own App
+For an example on how to use the ebur128 Plugin in your own appl see [examples/example.py](example.py). To run it with the correct Plugin-Path, use
+
+    make run-example-py
+
 
 [MIT]: http://www.opensource.org/licenses/mit-license.php or COPYING.MIT
