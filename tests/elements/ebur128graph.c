@@ -9,6 +9,9 @@
 #include <gst/audio/audio.h>
 #include <gst/check/gstcheck.h>
 
+// required to assert internal state
+#include "../src/gstebur128graphelement.h"
+
 #define SUPPORTED_AUDIO_CAPS_STRING                                                                                    \
   "audio/x-raw, "                                                                                                      \
   "           format = { (string)S16LE, (string)S32LE, (string)F32LE, (string)F64LE }, "                               \
@@ -248,6 +251,94 @@ GST_END_TEST;
 GST_START_TEST(test_accepts_f64) { test_accepts(F64_CAPS_STRING); }
 GST_END_TEST;
 
+static void setup_element_for_buffer_test() {
+  GstClockTime timestamp;
+
+  // framerate=1/30 (interval=0:00:00.033333333) (33.33 msec) at sample_rate=48000 results in video_interval_frames=1600
+  // (number of audio-frames per video-frame)
+  int framerate = 30;
+
+  // video_width of 660px, minus gauge and gutters, results in a graph of 600px
+  // timebase=0:01:00.000000000 for a graph of w=600 at sample_rate=48000 results in
+  // measurement_interval=0:00:00.100000000 (100 msec). this results in measurement_interval_frames=4800 (number of
+  // audio-frames per measurement)
+  int timebase_seconds = 60;
+  int video_width = 660;
+
+  // Setup ebur128 Element with 10 fps in BGRx-Mode with the given frame size
+  GstCaps *video_caps = gst_caps_new_simple(        //
+      "video/x-raw",                                //
+      "format", G_TYPE_STRING, "BGRx",              //
+      "framerate", GST_TYPE_FRACTION, framerate, 1, //
+      "width", G_TYPE_INT, video_width,             //
+      "height", G_TYPE_INT, video_width / 4 * 3,    //
+      NULL);
+
+  GstCaps *audio_caps = gst_caps_from_string(S16_CAPS_STRING);
+  setup_element_with_caps(audio_caps, video_caps);
+  gst_caps_unref(video_caps);
+  gst_caps_unref(audio_caps);
+
+  g_object_set(element, "timebase", timebase_seconds * GST_SECOND, NULL);
+}
+
+static void push_buffer_of_ms(int length_in_ms) {
+  GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, length_in_ms);
+  gst_pad_push(mysrcpad, inbuffer);
+}
+
+static void assert_num_frames_num_measurements(int expected_video_frames, int expected_measurements) {
+  GstEbur128Graph *graph = (GstEbur128Graph *)element;
+
+  guint actual_video_frames = g_list_length(buffers);
+  gint actual_measurements = graph->measurements.history_head;
+  GST_INFO("actual_video_frames=%d expected_video_frames=%d", actual_video_frames, expected_video_frames);
+  GST_INFO("actual_measurements=%d expected_measurements=%d", actual_measurements, expected_measurements);
+
+  // assert frame- and measurement-count is corrext
+  fail_unless_equals_int(expected_video_frames, actual_video_frames);
+  fail_unless_equals_int(expected_measurements, actual_measurements);
+}
+
+// buffers smaller then frame & measurement interval
+GST_START_TEST(test_small_buffers) {
+  // setup with S16 input format, 10fps output and 60s timebase on a 600px graph
+  setup_element_for_buffer_test();
+
+  push_buffer_of_ms(20); // at 20ms
+  assert_num_frames_num_measurements(0, 0);
+
+  push_buffer_of_ms(20); // at 40ms
+  assert_num_frames_num_measurements(1, 0);
+
+  push_buffer_of_ms(20); // at 60ms
+  assert_num_frames_num_measurements(1, 0);
+
+  push_buffer_of_ms(20); // at 80ms
+  assert_num_frames_num_measurements(2, 0);
+
+  push_buffer_of_ms(20); // at 100ms
+  assert_num_frames_num_measurements(3, 1);
+
+  push_buffer_of_ms(20); // at 120ms
+  assert_num_frames_num_measurements(3, 1);
+
+  push_buffer_of_ms(20); // at 140ms
+  assert_num_frames_num_measurements(4, 1);
+
+  push_buffer_of_ms(20); // at 160ms
+  assert_num_frames_num_measurements(4, 1);
+
+  push_buffer_of_ms(20); // at 180ms
+  assert_num_frames_num_measurements(5, 1);
+
+  push_buffer_of_ms(20); // at 200ms
+  assert_num_frames_num_measurements(6, 2);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128graph");
 
@@ -294,9 +385,9 @@ static Suite *element_suite(void) {
   // tcase_add_test(tc_properties, test_prop_measurement);
   // tcase_add_test(tc_properties, test_prop_timebase);
 
-  // TCase *tc_buffer_size = tcase_create("buffer_size");
-  // suite_add_tcase(s, tc_buffer_size);
-  // tcase_add_test(tc_buffer_size, test_small_buffers);
+  TCase *tc_buffer_size = tcase_create("buffer_size");
+  suite_add_tcase(s, tc_buffer_size);
+  tcase_add_test(tc_buffer_size, test_small_buffers);
   // tcase_add_test(tc_buffer_size, test_medium_buffers);
   // tcase_add_test(tc_buffer_size, test_large_buffers);
 

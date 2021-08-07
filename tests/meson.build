@@ -1,6 +1,7 @@
 gstcheck_dep = dependency('gstreamer-check-1.0', fallback : ['gstreamer', 'gst_check_dep'])
+cairo_dep = dependency('cairo')
 
-test_deps = [gst_dep, gstbase_dep, gstcheck_dep, gstaudio_dep]
+test_deps = [gst_dep, gstbase_dep, gstcheck_dep, gstaudio_dep, cairo_dep]
 
 test_defines = [
   '-UG_DISABLE_ASSERT',
