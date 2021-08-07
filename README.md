@@ -6,7 +6,7 @@ This plugin contains two elements
   Passes audio, emitting Events for ebur128 loudness (similar to the level-Elemenr)
 
 * ebur128display:
-  Visualizes EBU-R Levels over a period of time as a comfigurable Video-Stream
+  Visualizes EBU-R Levels over a period of time as a configurable Video-Stream
 
 ## License
 
