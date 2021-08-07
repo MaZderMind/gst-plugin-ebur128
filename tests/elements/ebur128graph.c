@@ -466,6 +466,24 @@ GST_END_TEST;
 GST_START_TEST(test_prop_scale_to) { test_int_property("scale_to"); }
 GST_END_TEST;
 
+GST_START_TEST(test_prop_scale_mode) {
+  setup_element(S16_CAPS_STRING);
+  GstEbur128ScaleMode read_back;
+
+  g_object_set(element, "scale_mode", GST_EBUR128_SCALE_MODE_ABSOLUTE, NULL);
+  read_back = GST_EBUR128_SCALE_MODE_RELATIVE;
+  g_object_get(element, "scale_mode", &read_back, NULL);
+  fail_unless(read_back == GST_EBUR128_SCALE_MODE_ABSOLUTE);
+
+  g_object_set(element, "scale_mode", GST_EBUR128_SCALE_MODE_RELATIVE, NULL);
+  read_back = GST_EBUR128_SCALE_MODE_ABSOLUTE;
+  g_object_get(element, "scale_mode", &read_back, NULL);
+  fail_unless(read_back == GST_EBUR128_SCALE_MODE_RELATIVE);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
 GST_START_TEST(test_prop_scale_target) { test_int_property("scale_target"); }
 GST_END_TEST;
 
@@ -473,6 +491,24 @@ GST_START_TEST(test_prop_font_size_header) { test_double_property("font_size_hea
 GST_END_TEST;
 
 GST_START_TEST(test_prop_font_size_scale) { test_double_property("font_size_scale"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_measurement) {
+  setup_element(S16_CAPS_STRING);
+  GstEbur128Measurement read_back;
+
+  g_object_set(element, "measurement", GST_EBUR128_MEASUREMENT_MOMENTARY, NULL);
+  read_back = GST_EBUR128_MEASUREMENT_SHORT_TERM;
+  g_object_get(element, "measurement", &read_back, NULL);
+  fail_unless(read_back == GST_EBUR128_MEASUREMENT_MOMENTARY);
+
+  g_object_set(element, "measurement", GST_EBUR128_MEASUREMENT_SHORT_TERM, NULL);
+  read_back = GST_EBUR128_MEASUREMENT_MOMENTARY;
+  g_object_get(element, "measurement", &read_back, NULL);
+  fail_unless(read_back == GST_EBUR128_MEASUREMENT_SHORT_TERM);
+
+  cleanup_element();
+}
 GST_END_TEST;
 
 GST_START_TEST(test_prop_timebase) { test_uint_property("timebase"); }
@@ -517,11 +553,11 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_properties, test_prop_gauge_w);
   tcase_add_test(tc_properties, test_prop_scale_from);
   tcase_add_test(tc_properties, test_prop_scale_to);
-  // tcase_add_test(tc_properties, test_prop_scale_mode);
+  tcase_add_test(tc_properties, test_prop_scale_mode);
   tcase_add_test(tc_properties, test_prop_scale_target);
   tcase_add_test(tc_properties, test_prop_font_size_header);
   tcase_add_test(tc_properties, test_prop_font_size_scale);
-  // tcase_add_test(tc_properties, test_prop_measurement);
+  tcase_add_test(tc_properties, test_prop_measurement);
   tcase_add_test(tc_properties, test_prop_timebase);
 
   TCase *tc_buffer_size = tcase_create("buffer_size");
