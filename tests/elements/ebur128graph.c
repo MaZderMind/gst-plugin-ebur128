@@ -49,8 +49,6 @@
                                          "rate = (int) 48000, "                                                        \
                                          "channels = (int) 2"
 
-static GstStaticPadTemplate sinktemplate =
-    GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_VIDEO_CAPS_STRING));
 static GstStaticPadTemplate srctemplate =
     GST_STATIC_PAD_TEMPLATE("src", GST_PAD_SRC, GST_PAD_ALWAYS, GST_STATIC_CAPS(SUPPORTED_AUDIO_CAPS_STRING));
 
@@ -62,18 +60,20 @@ static GstElement *element;
 static GstBus *bus;
 
 /* takes over reference for outcaps */
-static void setup_element(const gchar *caps_str) {
+static void setup_element_with_caps(GstCaps *audio_caps, GstCaps *video_caps) {
   GST_INFO("setup_element");
   element = gst_check_setup_element("ebur128graph");
   mysrcpad = gst_check_setup_src_pad(element, &srctemplate);
-  mysinkpad = gst_check_setup_sink_pad(element, &sinktemplate);
+
+  GstPadTemplate *sinktemplate = gst_pad_template_new("sink", GST_PAD_SINK, GST_PAD_ALWAYS, video_caps);
+  mysinkpad = gst_check_setup_sink_pad_from_template(element, sinktemplate);
+  gst_object_unref(sinktemplate);
+
   gst_pad_set_active(mysrcpad, TRUE);
   gst_pad_set_active(mysinkpad, TRUE);
 
   /* setup event capturing */
-  GstCaps *caps = gst_caps_from_string(caps_str);
-  gst_check_setup_events(mysrcpad, element, caps, GST_FORMAT_TIME);
-  gst_caps_unref(caps);
+  gst_check_setup_events(mysrcpad, element, audio_caps, GST_FORMAT_TIME);
 
   /* set to playing */
   fail_unless(gst_element_set_state(element, GST_STATE_PLAYING) == GST_STATE_CHANGE_SUCCESS,
@@ -84,6 +84,16 @@ static void setup_element(const gchar *caps_str) {
   ASSERT_OBJECT_REFCOUNT(bus, "bus", 1);
   gst_element_set_bus(element, bus);
   ASSERT_OBJECT_REFCOUNT(bus, "bus", 2);
+}
+
+static void setup_element(const gchar *audio_caps_str) {
+  GstCaps *audio_caps = gst_caps_from_string(audio_caps_str);
+  GstCaps *video_caps = gst_caps_from_string(SUPPORTED_VIDEO_CAPS_STRING);
+
+  setup_element_with_caps(audio_caps, video_caps);
+
+  gst_caps_unref(audio_caps);
+  gst_caps_unref(video_caps);
 }
 
 static void cleanup_element() {
@@ -134,28 +144,133 @@ GST_START_TEST(test_setup_and_teardown) {
 }
 GST_END_TEST;
 
+static void test_generates_video_frame_size(int width, int height) {
+  GstBuffer *inbuffer, *outbuffer;
+
+  GstCaps *audio_caps = gst_caps_from_string(S16_CAPS_STRING);
+
+  // Setup ebur128 Element with 10 fps in BGRx-Mode with the given frame size
+  GstCaps *video_caps = gst_caps_new_simple( //
+      "video/x-raw",                         //
+      "format", G_TYPE_STRING, "BGRx",       //
+      "framerate", GST_TYPE_FRACTION, 10, 1, //
+      "width", G_TYPE_INT, width,            //
+      "height", G_TYPE_INT, height,          //
+      NULL);
+
+  setup_element_with_caps(audio_caps, video_caps);
+  gst_caps_unref(video_caps);
+  gst_caps_unref(audio_caps);
+
+  /* create a fake 100 msec buffer with all zeros */
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
+
+  /* at 10 fps, a frame is exactly 100 msec long, so we expect exactly one frame to be generated */
+  fail_unless_equals_int(g_list_length(buffers), 1);
+  fail_if((outbuffer = (GstBuffer *)buffers->data) == NULL);
+
+  fail_unless_equals_int64(gst_buffer_get_size(outbuffer), width * height * 4);
+
+  cleanup_element();
+}
+
+GST_START_TEST(test_generates_video_frame_size_150x100) { test_generates_video_frame_size(150, 100); }
+GST_END_TEST;
+
+GST_START_TEST(test_generates_video_frame_size_640x480) { test_generates_video_frame_size(640, 480); }
+GST_END_TEST;
+
+GST_START_TEST(test_generates_video_frame_size_1920x1080) { test_generates_video_frame_size(1920, 1080); }
+GST_END_TEST;
+
+static void test_generates_video_frame_rate(int framerate) {
+  GstBuffer *inbuffer;
+
+  GstCaps *audio_caps = gst_caps_from_string(S16_CAPS_STRING);
+
+  // Setup ebur128 Element with 10 fps in BGRx-Mode with the given frame size
+  GstCaps *video_caps = gst_caps_new_simple(        //
+      "video/x-raw",                                //
+      "format", G_TYPE_STRING, "BGRx",              //
+      "framerate", GST_TYPE_FRACTION, framerate, 1, //
+      "width", G_TYPE_INT, 640,                     //
+      "height", G_TYPE_INT, 480,                    //
+      NULL);
+
+  setup_element_with_caps(audio_caps, video_caps);
+  gst_caps_unref(video_caps);
+  gst_caps_unref(audio_caps);
+
+  /* create a fake 1000 msec buffer with all zeros */
+  inbuffer = create_buffer(S16_CAPS_STRING, 1000);
+  fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
+
+  /* at x fps, a frame is exactly 1000/x msec long, so we expect exactly x frames to be generated for our 1000ms buffer
+   */
+  fail_unless_equals_int(g_list_length(buffers), framerate);
+
+  cleanup_element();
+}
+
+GST_START_TEST(test_generates_video_frame_rate_5fps) { test_generates_video_frame_rate(5); }
+GST_END_TEST;
+
+GST_START_TEST(test_generates_video_frame_rate_25fps) { test_generates_video_frame_rate(25); }
+GST_END_TEST;
+
+GST_START_TEST(test_generates_video_frame_rate_30fps) { test_generates_video_frame_rate(30); }
+GST_END_TEST;
+
+GST_START_TEST(test_generates_video_frame_rate_60fps) { test_generates_video_frame_rate(60); }
+GST_END_TEST;
+
+static void test_accepts(const char *caps_str) {
+  GstBuffer *inbuffer;
+
+  setup_element(caps_str);
+
+  /* create a fake 100 msec buffer with all zeros */
+  inbuffer = create_buffer(S16_CAPS_STRING, 100);
+  fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
+
+  cleanup_element();
+}
+
+GST_START_TEST(test_accepts_s16) { test_accepts(S16_CAPS_STRING); }
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_s32) { test_accepts(S32_CAPS_STRING); }
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_f32) { test_accepts(F32_CAPS_STRING); }
+GST_END_TEST;
+
+GST_START_TEST(test_accepts_f64) { test_accepts(F64_CAPS_STRING); }
+GST_END_TEST;
+
 static Suite *element_suite(void) {
-  Suite *s = suite_create("ebur128");
+  Suite *s = suite_create("ebur128graph");
 
   TCase *tc_general = tcase_create("general");
   suite_add_tcase(s, tc_general);
   tcase_add_test(tc_general, test_setup_and_teardown);
 
-  // tcase_add_test(tc_general, test_generates_video_frame_size_150x100);
-  // tcase_add_test(tc_general, test_generates_video_frame_size_640x480);
-  // tcase_add_test(tc_general, test_generates_video_frame_size_1920x1080);
+  tcase_add_test(tc_general, test_generates_video_frame_size_150x100);
+  tcase_add_test(tc_general, test_generates_video_frame_size_640x480);
+  tcase_add_test(tc_general, test_generates_video_frame_size_1920x1080);
 
-  // tcase_add_test(tc_general, test_generates_video_frame_rate_5fps);
-  // tcase_add_test(tc_general, test_generates_video_frame_rate_25fps);
-  // tcase_add_test(tc_general, test_generates_video_frame_rate_30fps);
-  // tcase_add_test(tc_general, test_generates_video_frame_rate_60fps);
+  tcase_add_test(tc_general, test_generates_video_frame_rate_5fps);
+  tcase_add_test(tc_general, test_generates_video_frame_rate_25fps);
+  tcase_add_test(tc_general, test_generates_video_frame_rate_30fps);
+  tcase_add_test(tc_general, test_generates_video_frame_rate_60fps);
 
-  // TCase *tc_audio_formats = tcase_create("audio_formats");
-  // suite_add_tcase(s, tc_audio_formats);
-  // tcase_add_test(tc_audio_formats, test_accepts_s16);
-  // tcase_add_test(tc_audio_formats, test_accepts_s32);
-  // tcase_add_test(tc_audio_formats, test_accepts_f32);
-  // tcase_add_test(tc_audio_formats, test_accepts_f64);
+  TCase *tc_audio_formats = tcase_create("audio_formats");
+  suite_add_tcase(s, tc_audio_formats);
+  tcase_add_test(tc_audio_formats, test_accepts_s16);
+  tcase_add_test(tc_audio_formats, test_accepts_s32);
+  tcase_add_test(tc_audio_formats, test_accepts_f32);
+  tcase_add_test(tc_audio_formats, test_accepts_f64);
 
   // TCase *tc_properties = tcase_create("properties");
   // suite_add_tcase(s, tc_properties);
