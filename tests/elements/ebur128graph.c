@@ -252,8 +252,6 @@ GST_START_TEST(test_accepts_f64) { test_accepts(F64_CAPS_STRING); }
 GST_END_TEST;
 
 static void setup_element_for_buffer_test() {
-  GstClockTime timestamp;
-
   // framerate=1/30 (interval=0:00:00.033333333) (33.33 msec) at sample_rate=48000 results in video_interval_frames=1600
   // (number of audio-frames per video-frame)
   int framerate = 30;
@@ -298,9 +296,21 @@ static void assert_num_frames_num_measurements(int expected_video_frames, int ex
   // assert frame- and measurement-count is corrext
   fail_unless_equals_int(expected_video_frames, actual_video_frames);
   fail_unless_equals_int(expected_measurements, actual_measurements);
+
+  // assert last buffer's timestamp is correct
+  if (buffers != NULL) {
+    GstBuffer *video_buffer = g_list_last(buffers)->data;
+    GstClockTime expected_pts = (actual_video_frames - 1) * GST_SECOND / 30;
+    GstClockTime expected_duration = GST_SECOND / 30;
+    GST_WARNING("pts=%ld, expected_pts=%ld", video_buffer->pts, expected_pts);
+    GST_WARNING("duration=%ld, expected_duration=%ld", video_buffer->duration, expected_duration);
+
+    fail_unless_equals_int64(video_buffer->pts, expected_pts);
+    fail_unless(video_buffer->duration >= expected_duration && video_buffer->duration <= expected_duration + 1);
+  }
 }
 
-// buffers smaller then frame & measurement interval
+// buffers bigger then frame- but smaller then measurement interval
 GST_START_TEST(test_small_buffers) {
   // setup with S16 input format, 10fps output and 60s timebase on a 600px graph
   setup_element_for_buffer_test();
@@ -334,6 +344,51 @@ GST_START_TEST(test_small_buffers) {
 
   push_buffer_of_ms(20); // at 200ms
   assert_num_frames_num_measurements(6, 2);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
+// buffers smaller then frame & measurement interval
+GST_START_TEST(test_medium_buffers) {
+  // setup with S16 input format, 10fps output and 60s timebase on a 600px graph
+  setup_element_for_buffer_test();
+
+  push_buffer_of_ms(90); // at 90ms
+  assert_num_frames_num_measurements(2, 0);
+
+  push_buffer_of_ms(90); // at 180ms
+  assert_num_frames_num_measurements(5, 1);
+
+  push_buffer_of_ms(90); // at 270ms
+  assert_num_frames_num_measurements(8, 2);
+
+  push_buffer_of_ms(90); // at 360ms
+  assert_num_frames_num_measurements(10, 3);
+
+  push_buffer_of_ms(90); // at 450ms
+  assert_num_frames_num_measurements(13, 4);
+
+  cleanup_element();
+}
+GST_END_TEST;
+
+// buffers large then frame & measurement interval
+GST_START_TEST(test_large_buffers) {
+  // setup with S16 input format, 10fps output and 60s timebase on a 600px graph
+  setup_element_for_buffer_test();
+
+  push_buffer_of_ms(500); // at 500ms
+  assert_num_frames_num_measurements(15, 5);
+
+  push_buffer_of_ms(500); // at 1000ms
+  assert_num_frames_num_measurements(30, 10);
+
+  push_buffer_of_ms(1000); // at 2000ms
+  assert_num_frames_num_measurements(60, 20);
+
+  push_buffer_of_ms(1000); // at 3000ms
+  assert_num_frames_num_measurements(90, 30);
 
   cleanup_element();
 }
@@ -388,8 +443,8 @@ static Suite *element_suite(void) {
   TCase *tc_buffer_size = tcase_create("buffer_size");
   suite_add_tcase(s, tc_buffer_size);
   tcase_add_test(tc_buffer_size, test_small_buffers);
-  // tcase_add_test(tc_buffer_size, test_medium_buffers);
-  // tcase_add_test(tc_buffer_size, test_large_buffers);
+  tcase_add_test(tc_buffer_size, test_medium_buffers);
+  tcase_add_test(tc_buffer_size, test_large_buffers);
 
   return s;
 }
