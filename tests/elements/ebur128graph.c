@@ -394,6 +394,90 @@ GST_START_TEST(test_large_buffers) {
 }
 GST_END_TEST;
 
+static void test_uint_property(const char *prop_name) {
+  setup_element(S16_CAPS_STRING);
+  guint value = 0xDEADBEEF;
+  g_object_set(element, prop_name, value, NULL);
+  guint read_back = 0;
+  g_object_get(element, prop_name, &read_back, NULL);
+
+  fail_unless(read_back == 0xDEADBEEF);
+}
+
+static void test_int_property(const char *prop_name) {
+  setup_element(S16_CAPS_STRING);
+  gint value = -42;
+  g_object_set(element, prop_name, value, NULL);
+  gint read_back = 0;
+  g_object_get(element, prop_name, &read_back, NULL);
+
+  fail_unless(read_back == -42);
+}
+
+static void test_double_property(const char *prop_name) {
+  setup_element(S16_CAPS_STRING);
+  double value = 42.45;
+  g_object_set(element, prop_name, value, NULL);
+  double read_back = 0;
+  g_object_get(element, prop_name, &read_back, NULL);
+
+  fail_unless(read_back == 42.45);
+}
+
+GST_START_TEST(test_prop_color_background) { test_uint_property("color-background"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_border) { test_uint_property("color-border"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_scale) { test_uint_property("color-scale"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_scale_lines) { test_uint_property("color-scale_lines"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_header) { test_uint_property("color-header"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_graph) { test_uint_property("color-graph"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_too_loud) { test_uint_property("color-too_loud"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_loudness_ok) { test_uint_property("color-loudness_ok"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_color_not_loud_enough) { test_uint_property("color-not_loud_enough"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_gutter) { test_uint_property("gutter"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_scale_w) { test_uint_property("scale_w"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_gauge_w) { test_uint_property("gauge_w"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_scale_from) { test_int_property("scale_from"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_scale_to) { test_int_property("scale_to"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_scale_target) { test_int_property("scale_target"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_font_size_header) { test_double_property("font_size_header"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_font_size_scale) { test_double_property("font_size_scale"); }
+GST_END_TEST;
+
+GST_START_TEST(test_prop_timebase) { test_uint_property("timebase"); }
+GST_END_TEST;
+
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128graph");
 
@@ -417,28 +501,28 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_audio_formats, test_accepts_f32);
   tcase_add_test(tc_audio_formats, test_accepts_f64);
 
-  // TCase *tc_properties = tcase_create("properties");
-  // suite_add_tcase(s, tc_properties);
-  // tcase_add_test(tc_properties, test_prop_color_background);
-  // tcase_add_test(tc_properties, test_prop_color_border);
-  // tcase_add_test(tc_properties, test_prop_color_scale);
-  // tcase_add_test(tc_properties, test_prop_color_scale_lines);
-  // tcase_add_test(tc_properties, test_prop_color_header);
-  // tcase_add_test(tc_properties, test_prop_color_graph);
-  // tcase_add_test(tc_properties, test_prop_color_too_loud);
-  // tcase_add_test(tc_properties, test_prop_color_loudness_ok);
-  // tcase_add_test(tc_properties, test_prop_color_not_loud_enough);
-  // tcase_add_test(tc_properties, test_prop_gutter);
-  // tcase_add_test(tc_properties, test_prop_scale_w);
-  // tcase_add_test(tc_properties, test_prop_gauge_w);
-  // tcase_add_test(tc_properties, test_prop_scale_from);
-  // tcase_add_test(tc_properties, test_prop_scale_to);
+  TCase *tc_properties = tcase_create("properties");
+  suite_add_tcase(s, tc_properties);
+  tcase_add_test(tc_properties, test_prop_color_background);
+  tcase_add_test(tc_properties, test_prop_color_border);
+  tcase_add_test(tc_properties, test_prop_color_scale);
+  tcase_add_test(tc_properties, test_prop_color_scale_lines);
+  tcase_add_test(tc_properties, test_prop_color_header);
+  tcase_add_test(tc_properties, test_prop_color_graph);
+  tcase_add_test(tc_properties, test_prop_color_too_loud);
+  tcase_add_test(tc_properties, test_prop_color_loudness_ok);
+  tcase_add_test(tc_properties, test_prop_color_not_loud_enough);
+  tcase_add_test(tc_properties, test_prop_gutter);
+  tcase_add_test(tc_properties, test_prop_scale_w);
+  tcase_add_test(tc_properties, test_prop_gauge_w);
+  tcase_add_test(tc_properties, test_prop_scale_from);
+  tcase_add_test(tc_properties, test_prop_scale_to);
   // tcase_add_test(tc_properties, test_prop_scale_mode);
-  // tcase_add_test(tc_properties, test_prop_scale_target);
-  // tcase_add_test(tc_properties, test_prop_font_size_header);
-  // tcase_add_test(tc_properties, test_prop_font_size_scale);
+  tcase_add_test(tc_properties, test_prop_scale_target);
+  tcase_add_test(tc_properties, test_prop_font_size_header);
+  tcase_add_test(tc_properties, test_prop_font_size_scale);
   // tcase_add_test(tc_properties, test_prop_measurement);
-  // tcase_add_test(tc_properties, test_prop_timebase);
+  tcase_add_test(tc_properties, test_prop_timebase);
 
   TCase *tc_buffer_size = tcase_create("buffer_size");
   suite_add_tcase(s, tc_buffer_size);
