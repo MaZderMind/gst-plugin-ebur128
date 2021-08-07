@@ -430,6 +430,20 @@ static void has_only_property(const char *prop_name) {
 
 static void test_bool_property(const char *prop_name) {
   setup_element(S16_CAPS_STRING);
+  g_object_set(element,
+               // configure interval
+               "interval", 100 * GST_MSECOND,
+
+               // null default-true of momentary
+               "momentary", FALSE,
+
+               // sentinel
+               NULL);
+
+  // expect to read back false
+  gboolean read_back_value = TRUE;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_if(read_back_value);
 
   g_object_set(element,
                // configure interval
@@ -443,6 +457,11 @@ static void test_bool_property(const char *prop_name) {
 
                // sentinel
                NULL);
+
+  // expect to read back true
+  read_back_value = FALSE;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_unless(read_back_value);
 
   GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 100);
   gst_pad_push(mysrcpad, inbuffer);
@@ -467,6 +486,11 @@ static void test_ulong_property(const char *prop_name, gulong value) {
 
                // sentinel
                NULL);
+
+  // expect to read back the correct value
+  gulong read_back_value = -1;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_unless(read_back_value == value);
 
   GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 1000);
   gst_pad_push(mysrcpad, inbuffer);
