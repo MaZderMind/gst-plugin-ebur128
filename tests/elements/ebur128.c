@@ -260,7 +260,8 @@ GST_START_TEST(test_timestamps) {
 
     GstClockTime timestamp;
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_INFO("Gost timestamp=%" GST_TIME_FORMAT ", expected %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp), GST_TIME_ARGS(expectation));
+    GST_INFO("Gost timestamp=%" GST_TIME_FORMAT ", expected %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp),
+             GST_TIME_ARGS(expectation));
     fail_unless(timestamp == expectation);
 
     GstClockTime stream_time;
