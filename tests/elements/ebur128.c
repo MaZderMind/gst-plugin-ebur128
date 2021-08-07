@@ -192,7 +192,6 @@ GST_START_TEST(test_emits_message) {
 
   /* create a fake 100 msec buffer with all zeros */
   inbuffer = create_buffer(S16_CAPS_STRING, 100);
-  ASSERT_BUFFER_REFCOUNT(inbuffer, "inbuffer", 1);
 
   fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
 
