@@ -202,12 +202,11 @@ static void test_generates_video_frame_rate(int framerate) {
   gst_caps_unref(video_caps);
   gst_caps_unref(audio_caps);
 
-  /* create a fake 1000 msec buffer with all zeros */
+  /* create a fake 1000 msec / 1 sec buffer with all zeros */
   inbuffer = create_buffer(S16_CAPS_STRING, 1000);
   fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
 
-  /* at x fps, a frame is exactly 1000/x msec long, so we expect exactly x frames to be generated for our 1000ms buffer
-   */
+  /* at x fps, a frame is exactly 1/x sec long, so we expect exactly x frames to be generated for our 1 sec buffer */
   fail_unless_equals_int(g_list_length(buffers), framerate);
 
   cleanup_element();
