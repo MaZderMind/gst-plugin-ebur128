@@ -10,7 +10,7 @@ This plugin contains two elements
 
 ## License
 
-This code is provided under a MIT license [MIT], which basically means "do
+This code is provided under a [MIT license](http://www.opensource.org/licenses/mit-license.php), which basically means "do
 with it as you wish, but don't blame us if it doesn't work".
 
 ## Usage
@@ -26,7 +26,7 @@ Configure and build:
     # Build
     make
 
-The Makefile is just a shortcut to meson & ninja. See <https://mesonbuild.com/Quick-guide.html>
+The Makefile is just a shortcut to meson & ninja. See the [Meson Quickstart Guide](https://mesonbuild.com/Quick-guide.html)
 on how to install the Meson build system and ninja.
 
 You can check if it has been built correctly with:
@@ -42,9 +42,7 @@ And Test it as with:
     make run-ebur128graph
 
 ## Use in your own App
-For an example on how to use the ebur128 Plugin in your own appl see [examples/example.py](example.py). To run it with the correct Plugin-Path, use
+For an example on how to use the ebur128 Plugin in your own appl see [example.py](examples/example.py). To run it with the correct Plugin-Path, use
 
     make run-example-py
 
-
-[MIT]: http://www.opensource.org/licenses/mit-license.php or COPYING.MIT
