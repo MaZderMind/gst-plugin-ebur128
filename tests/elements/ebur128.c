@@ -192,7 +192,6 @@ GST_START_TEST(test_emits_message) {
 
   /* create a fake 100 msec buffer with all zeros */
   inbuffer = create_buffer(S16_CAPS_STRING, 100);
-  ASSERT_BUFFER_REFCOUNT(inbuffer, "inbuffer", 1);
 
   fail_unless(gst_pad_push(mysrcpad, inbuffer) == GST_FLOW_OK);
 
@@ -261,7 +260,8 @@ GST_START_TEST(test_timestamps) {
 
     GstClockTime timestamp;
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_INFO("Gost timestamp=%" GST_TIME_FORMAT ", expected %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp), GST_TIME_ARGS(expectation));
+    GST_INFO("Gost timestamp=%" GST_TIME_FORMAT ", expected %" GST_TIME_FORMAT, GST_TIME_ARGS(timestamp),
+             GST_TIME_ARGS(expectation));
     fail_unless(timestamp == expectation);
 
     GstClockTime stream_time;
@@ -430,6 +430,20 @@ static void has_only_property(const char *prop_name) {
 
 static void test_bool_property(const char *prop_name) {
   setup_element(S16_CAPS_STRING);
+  g_object_set(element,
+               // configure interval
+               "interval", 100 * GST_MSECOND,
+
+               // null default-true of momentary
+               "momentary", FALSE,
+
+               // sentinel
+               NULL);
+
+  // expect to read back false
+  gboolean read_back_value = TRUE;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_if(read_back_value);
 
   g_object_set(element,
                // configure interval
@@ -443,6 +457,11 @@ static void test_bool_property(const char *prop_name) {
 
                // sentinel
                NULL);
+
+  // expect to read back true
+  read_back_value = FALSE;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_unless(read_back_value);
 
   GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 100);
   gst_pad_push(mysrcpad, inbuffer);
@@ -462,11 +481,16 @@ static void test_ulong_property(const char *prop_name, gulong value) {
                // null default-true of momentary
                "momentary", FALSE,
 
-               // null default-true of momentary
+               // set property
                prop_name, value,
 
                // sentinel
                NULL);
+
+  // expect to read back the correct value
+  gulong read_back_value = -1;
+  g_object_get(element, prop_name, &read_back_value, NULL);
+  fail_unless(read_back_value == value);
 
   GstBuffer *inbuffer = create_buffer(S16_CAPS_STRING, 1000);
   gst_pad_push(mysrcpad, inbuffer);
@@ -635,7 +659,7 @@ GST_START_TEST(test_large_buffers) {
     // validate timestamp
     structure = gst_message_get_structure(message);
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_WARNING("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
+    GST_INFO("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
     fail_unless(timestamp == 100 * GST_MSECOND * (iteration + 1));
     gst_message_unref(message);
   }
@@ -652,7 +676,7 @@ GST_START_TEST(test_large_buffers) {
     // validate timestamp
     structure = gst_message_get_structure(message);
     gst_structure_get_clock_time(structure, "timestamp", &timestamp);
-    GST_WARNING("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
+    GST_INFO("iteration=%d, timestamp=%" GST_TIME_FORMAT, iteration, GST_TIME_ARGS(timestamp));
     fail_unless(timestamp == (100 * GST_MSECOND * (iteration + 11)));
     gst_message_unref(message);
   }
@@ -692,7 +716,7 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_properties, test_prop_post_messages);
   // prop "interval" is thoroughly tested in the buffer-size testcase
 
-  TCase *tc_buffer_size = tcase_create("buffer-size");
+  TCase *tc_buffer_size = tcase_create("buffer_size");
   suite_add_tcase(s, tc_buffer_size);
   tcase_add_test(tc_buffer_size, test_small_buffers);
   tcase_add_test(tc_buffer_size, test_medium_buffers);
