@@ -462,7 +462,7 @@ static void test_ulong_property(const char *prop_name, gulong value) {
                // null default-true of momentary
                "momentary", FALSE,
 
-               // null default-true of momentary
+               // set property
                prop_name, value,
 
                // sentinel
