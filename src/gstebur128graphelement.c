@@ -233,7 +233,7 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
   g_object_class_install_property(
       gobject_class, PROP_COLOR_LOUDNESS_OK,
       g_param_spec_uint("color-loudness-ok", "Loudness-Okay Area Color",
-                        "Color of the Loudness-Olay Area (big-endian ARGB)",
+                        "Color of the Loudness-Okay Area (big-endian ARGB)",
                         /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_LOUDNESS_OK,
                         G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
