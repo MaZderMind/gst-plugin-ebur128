@@ -51,4 +51,11 @@ run-ebur128graph: build
 		t. ! queue ! ebur128graph ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 
+run-ebur128graph-noninteractive: build
+	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
+		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
+		t. ! queue ! ebur128graph ! videoconvert ! vp8enc ! mux. \
+		t. ! queue ! vorbisenc ! mux. \
+		webmmux name=mux ! filesink location=builddir/music-and-graph.webm
+
 .PHONY: build inspect inspect-ebur128 run-ebur128 format
