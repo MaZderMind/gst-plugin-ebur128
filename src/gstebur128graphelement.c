@@ -48,6 +48,10 @@ enum {
   PROP_COLOR_LOUDNESS_OK,
   PROP_COLOR_NOT_LOUD_ENOUGH,
 
+  PROP_COLOR_SHORT_TERM_GAUGE,
+  PROP_COLOR_MOMENTARY_GAUGE,
+  PROP_COLOR_PEAK_GAUGE,
+
   PROP_GUTTER,
   PROP_SCALE_W,
   PROP_GAUGE_W,
@@ -61,7 +65,11 @@ enum {
   PROP_FONT_SIZE_SCALE,
 
   PROP_MEASUREMENT,
-  PROP_TIMEBASE
+  PROP_TIMEBASE,
+
+  PROP_SHORT_TERM_GAUGE,
+  PROP_MOMENTARY_GAUGE,
+  PROP_PEAK_GAUGE
 };
 
 #define DEFAULT_COLOR_BACKGROUND 0xFF000000
@@ -74,6 +82,10 @@ enum {
 #define DEFAULT_COLOR_TOO_LOUD 0xFFDB6666
 #define DEFAULT_COLOR_LOUDNESS_OK 0xFF66DB66
 #define DEFAULT_COLOR_NOT_LOUD_ENOUGH 0xFF6666DB
+
+#define DEFAULT_COLOR_SHORT_TERM_GAUGE 0x9900ff00
+#define DEFAULT_COLOR_MOMENTARY_GAUGE 0x99000000
+#define DEFAULT_COLOR_PEAK_GAUGE 0x9900ffff
 
 #define DEFAULT_GUTTER 5
 #define DEFAULT_SCALE_W 20
@@ -89,6 +101,10 @@ enum {
 
 #define DEFAULT_MEASUREMENT GST_EBUR128_MEASUREMENT_SHORT_TERM
 #define DEFAULT_TIMEBASE (60 * GST_SECOND)
+
+#define DEFAULT_SHORT_TERM_GAUGE FALSE
+#define DEFAULT_MOMENTARY_GAUGE TRUE
+#define DEFAULT_PEAK_GAUGE FALSE
 
 #define GST_TYPE_EBUR128GRAPH_SCALE_MODE (gst_ebur128graph_scale_mode_get_type())
 static GType gst_ebur128graph_scale_mode_get_type(void) {
@@ -245,6 +261,26 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
                         G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
+      gobject_class, PROP_COLOR_SHORT_TERM_GAUGE,
+      g_param_spec_uint("color-gauge-short-term", "Short-Term-Gauge Color",
+                        "Color of the Short-Term-Gauge (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_SHORT_TERM_GAUGE,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_MOMENTARY_GAUGE,
+      g_param_spec_uint("color-gauge-momentary", "Long-Term-Gauge Color",
+                        "Color of the Long-Term-Gauge (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_MOMENTARY_GAUGE,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_COLOR_PEAK_GAUGE,
+      g_param_spec_uint("color-gauge-peak", "Peak-Gauge Color", "Color of the Peak-Gauge (big-endian ARGB)",
+                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_PEAK_GAUGE,
+                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
       gobject_class, PROP_GUTTER,
       g_param_spec_uint("gutter", "Gutter-Width", "Width of the Gutter between Elements (Pixels)", /* MIN */ 0,
                         /* MAX */ G_MAXUINT32, DEFAULT_GUTTER,
@@ -311,6 +347,23 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
                           /* MIN */ 0,
                           /* MAX */ G_MAXUINT64, DEFAULT_TIMEBASE,
                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SHORT_TERM_GAUGE,
+      g_param_spec_boolean("gauge-short-term", "Short-Term Loudness Gauge", "Enable Short-Term Loudness Gauge",
+                           DEFAULT_SHORT_TERM_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_MOMENTARY_GAUGE,
+      g_param_spec_boolean("gauge-momentary", "Momentary Loudness Gauge", "Enable Momentary Loudness Gauge",
+                           DEFAULT_MOMENTARY_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE,
+      g_param_spec_boolean("gauge-peak", "True-Peak Gauge", "Enable True-Peak Gauge", DEFAULT_PEAK_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
   gst_element_class_add_static_pad_template(element_class, &src_template_factory);
@@ -594,6 +647,10 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.color_loudness_ok = DEFAULT_COLOR_LOUDNESS_OK;
   graph->properties.color_not_loud_enough = DEFAULT_COLOR_NOT_LOUD_ENOUGH;
 
+  graph->properties.color_gauge_short_term = DEFAULT_COLOR_SHORT_TERM_GAUGE;
+  graph->properties.color_gauge_momentary = DEFAULT_COLOR_MOMENTARY_GAUGE;
+  graph->properties.color_gauge_peak = DEFAULT_COLOR_PEAK_GAUGE;
+
   // sizes
   graph->properties.gutter = DEFAULT_GUTTER;
   graph->properties.scale_w = DEFAULT_SCALE_W;
@@ -612,6 +669,11 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   // measurement
   graph->properties.measurement = DEFAULT_MEASUREMENT;
   graph->properties.timebase = DEFAULT_TIMEBASE;
+
+  // gauges
+  graph->properties.short_term_gauge = DEFAULT_SHORT_TERM_GAUGE;
+  graph->properties.momentary_gauge = DEFAULT_MOMENTARY_GAUGE;
+  graph->properties.peak_gauge = DEFAULT_PEAK_GAUGE;
 
   // measurements
   graph->measurements.momentary = 0;
@@ -680,6 +742,15 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
   case PROP_COLOR_NOT_LOUD_ENOUGH:
     graph->properties.color_not_loud_enough = g_value_get_uint(value);
     break;
+  case PROP_COLOR_SHORT_TERM_GAUGE:
+    graph->properties.color_gauge_short_term = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_MOMENTARY_GAUGE:
+    graph->properties.color_gauge_momentary = g_value_get_uint(value);
+    break;
+  case PROP_COLOR_PEAK_GAUGE:
+    graph->properties.color_gauge_peak = g_value_get_uint(value);
+    break;
   case PROP_GUTTER:
     graph->properties.gutter = g_value_get_uint(value);
     break;
@@ -712,6 +783,15 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
     break;
   case PROP_TIMEBASE:
     graph->properties.timebase = g_value_get_uint64(value);
+    break;
+  case PROP_SHORT_TERM_GAUGE:
+    graph->properties.short_term_gauge = g_value_get_boolean(value);
+    break;
+  case PROP_MOMENTARY_GAUGE:
+    graph->properties.momentary_gauge = g_value_get_boolean(value);
+    break;
+  case PROP_PEAK_GAUGE:
+    graph->properties.peak_gauge = g_value_get_boolean(value);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
@@ -750,6 +830,15 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
   case PROP_COLOR_NOT_LOUD_ENOUGH:
     g_value_set_uint(value, graph->properties.color_not_loud_enough);
     break;
+  case PROP_COLOR_SHORT_TERM_GAUGE:
+    g_value_set_uint(value, graph->properties.color_gauge_short_term);
+    break;
+  case PROP_COLOR_MOMENTARY_GAUGE:
+    g_value_set_uint(value, graph->properties.color_gauge_momentary);
+    break;
+  case PROP_COLOR_PEAK_GAUGE:
+    g_value_set_uint(value, graph->properties.color_gauge_peak);
+    break;
   case PROP_GUTTER:
     g_value_set_uint(value, graph->properties.gutter);
     break;
@@ -782,6 +871,15 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
     break;
   case PROP_TIMEBASE:
     g_value_set_uint64(value, graph->properties.timebase);
+    break;
+  case PROP_SHORT_TERM_GAUGE:
+    g_value_set_boolean(value, graph->properties.short_term_gauge);
+    break;
+  case PROP_MOMENTARY_GAUGE:
+    g_value_set_boolean(value, graph->properties.momentary_gauge);
+    break;
+  case PROP_PEAK_GAUGE:
+    g_value_set_boolean(value, graph->properties.peak_gauge);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
