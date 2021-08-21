@@ -185,6 +185,7 @@ static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph);
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
   GST_DEBUG_CATEGORY_INIT(gst_ebur128graph_debug, "ebur128graph", 0, "ebur128graph Element");
+  gst_ebur128graph_render_init();
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
@@ -1017,11 +1018,17 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
 
   gint gutter = graph->properties.gutter;
 
-  guint num_gauges =
-      graph->properties.short_term_gauge + graph->properties.momentary_gauge + graph->properties.peak_gauge;
   guint num_gauges_left = graph->properties.peak_gauge;
-  guint gauges_reserved_space = (graph->properties.gauge_w - gutter) * num_gauges;
-  guint gauges_reserved_space_left = (graph->properties.gauge_w - gutter) * num_gauges_left;
+  guint num_gauges_right = graph->properties.short_term_gauge + graph->properties.momentary_gauge;
+  guint num_gauges = num_gauges_left + num_gauges_right;
+
+  GST_INFO_OBJECT(graph, "short_term_gauge=%d momentary_gauge=%d peak_gauge=%d", graph->properties.short_term_gauge,
+                  graph->properties.momentary_gauge, graph->properties.peak_gauge);
+  GST_INFO_OBJECT(graph, "num_gauges_left=%d num_gauges_right=%d num_gauges=%d", num_gauges_left, num_gauges_right,
+                  num_gauges);
+
+  guint gauges_reserved_space = (graph->properties.gauge_w + gutter) * num_gauges;
+  guint gauges_reserved_space_left = (graph->properties.gauge_w + gutter) * num_gauges_left;
 
   cairo_text_extents_t extents;
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
@@ -1032,7 +1039,7 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   // header
   graph->positions.header.w = width - gutter - graph->properties.scale_w - gutter - gutter;
   graph->positions.header.h = font_height_header;
-  graph->positions.header.x = gutter + graph->properties.scale_w + gutter;
+  graph->positions.header.x = gutter;
   graph->positions.header.y = gutter;
 
   // scale
@@ -1042,10 +1049,24 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   graph->positions.scale.y = gutter + graph->positions.header.h + gutter;
 
   // gauges
-  graph->positions.gauge.w = graph->properties.gauge_w;
-  graph->positions.gauge.h = graph->positions.scale.h;
-  graph->positions.gauge.x = width - graph->positions.gauge.w - gutter;
-  graph->positions.gauge.y = graph->positions.scale.y;
+  GstEbur128Position gauge_position;
+  gauge_position.w = graph->properties.gauge_w;
+  gauge_position.h = graph->positions.scale.h;
+  gauge_position.x = width - (num_gauges_right * (graph->properties.gauge_w + gutter));
+  gauge_position.y = graph->positions.scale.y;
+
+  if (graph->properties.short_term_gauge) {
+    graph->positions.short_term_gauge = gauge_position;
+    gauge_position.x += graph->properties.gauge_w + gutter;
+  }
+
+  if (graph->properties.momentary_gauge) {
+    graph->positions.momentary_gauge = gauge_position;
+    gauge_position.x += graph->properties.gauge_w + gutter;
+  }
+
+  graph->positions.peak_gauge = gauge_position;
+  graph->positions.peak_gauge.x = gutter;
 
   // graph
   graph->positions.graph.w = width - gutter - graph->positions.scale.w - gutter - gutter - gauges_reserved_space;

@@ -45,7 +45,9 @@ typedef struct _GstEbur128Positions GstEbur128Positions;
 struct _GstEbur128Positions {
   GstEbur128Position header;
   GstEbur128Position scale;
-  GstEbur128Position gauge;
+  GstEbur128Position short_term_gauge;
+  GstEbur128Position momentary_gauge;
+  GstEbur128Position peak_gauge;
   GstEbur128Position graph;
 
   gint num_scales;
