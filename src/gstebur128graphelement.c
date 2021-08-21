@@ -48,10 +48,6 @@ enum {
   PROP_COLOR_LOUDNESS_OK,
   PROP_COLOR_NOT_LOUD_ENOUGH,
 
-  PROP_COLOR_SHORT_TERM_GAUGE,
-  PROP_COLOR_MOMENTARY_GAUGE,
-  PROP_COLOR_PEAK_GAUGE,
-
   PROP_GUTTER,
   PROP_SCALE_W,
   PROP_GAUGE_W,
@@ -82,10 +78,6 @@ enum {
 #define DEFAULT_COLOR_TOO_LOUD 0xFFDB6666
 #define DEFAULT_COLOR_LOUDNESS_OK 0xFF66DB66
 #define DEFAULT_COLOR_NOT_LOUD_ENOUGH 0xFF6666DB
-
-#define DEFAULT_COLOR_SHORT_TERM_GAUGE 0x9900ff00
-#define DEFAULT_COLOR_MOMENTARY_GAUGE 0x99000000
-#define DEFAULT_COLOR_PEAK_GAUGE 0x9900ffff
 
 #define DEFAULT_GUTTER 5
 #define DEFAULT_SCALE_W 20
@@ -259,26 +251,6 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
       g_param_spec_uint("color-not-loud-enough", "Not-loud-enough Area Color",
                         "Color of the Not-loud-enough Area (big-endian ARGB)",
                         /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_NOT_LOUD_ENOUGH,
-                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
-      gobject_class, PROP_COLOR_SHORT_TERM_GAUGE,
-      g_param_spec_uint("color-gauge-short-term", "Short-Term-Gauge Color",
-                        "Color of the Short-Term-Gauge (big-endian ARGB)",
-                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_SHORT_TERM_GAUGE,
-                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
-      gobject_class, PROP_COLOR_MOMENTARY_GAUGE,
-      g_param_spec_uint("color-gauge-momentary", "Long-Term-Gauge Color",
-                        "Color of the Long-Term-Gauge (big-endian ARGB)",
-                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_MOMENTARY_GAUGE,
-                        G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
-
-  g_object_class_install_property(
-      gobject_class, PROP_COLOR_PEAK_GAUGE,
-      g_param_spec_uint("color-gauge-peak", "Peak-Gauge Color", "Color of the Peak-Gauge (big-endian ARGB)",
-                        /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_PEAK_GAUGE,
                         G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
@@ -648,10 +620,6 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.color_loudness_ok = DEFAULT_COLOR_LOUDNESS_OK;
   graph->properties.color_not_loud_enough = DEFAULT_COLOR_NOT_LOUD_ENOUGH;
 
-  graph->properties.color_gauge_short_term = DEFAULT_COLOR_SHORT_TERM_GAUGE;
-  graph->properties.color_gauge_momentary = DEFAULT_COLOR_MOMENTARY_GAUGE;
-  graph->properties.color_gauge_peak = DEFAULT_COLOR_PEAK_GAUGE;
-
   // sizes
   graph->properties.gutter = DEFAULT_GUTTER;
   graph->properties.scale_w = DEFAULT_SCALE_W;
@@ -743,15 +711,6 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
   case PROP_COLOR_NOT_LOUD_ENOUGH:
     graph->properties.color_not_loud_enough = g_value_get_uint(value);
     break;
-  case PROP_COLOR_SHORT_TERM_GAUGE:
-    graph->properties.color_gauge_short_term = g_value_get_uint(value);
-    break;
-  case PROP_COLOR_MOMENTARY_GAUGE:
-    graph->properties.color_gauge_momentary = g_value_get_uint(value);
-    break;
-  case PROP_COLOR_PEAK_GAUGE:
-    graph->properties.color_gauge_peak = g_value_get_uint(value);
-    break;
   case PROP_GUTTER:
     graph->properties.gutter = g_value_get_uint(value);
     break;
@@ -830,15 +789,6 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
     break;
   case PROP_COLOR_NOT_LOUD_ENOUGH:
     g_value_set_uint(value, graph->properties.color_not_loud_enough);
-    break;
-  case PROP_COLOR_SHORT_TERM_GAUGE:
-    g_value_set_uint(value, graph->properties.color_gauge_short_term);
-    break;
-  case PROP_COLOR_MOMENTARY_GAUGE:
-    g_value_set_uint(value, graph->properties.color_gauge_momentary);
-    break;
-  case PROP_COLOR_PEAK_GAUGE:
-    g_value_set_uint(value, graph->properties.color_gauge_peak);
     break;
   case PROP_GUTTER:
     g_value_set_uint(value, graph->properties.gutter);

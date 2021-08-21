@@ -69,10 +69,6 @@ struct _GstEbur128Properties {
   guint color_loudness_ok;
   guint color_not_loud_enough;
 
-  guint color_gauge_short_term;
-  guint color_gauge_momentary;
-  guint color_gauge_peak;
-
   // sizes
   guint gutter;
   guint scale_w;
