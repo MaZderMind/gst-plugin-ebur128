@@ -175,7 +175,7 @@ void gst_ebur128graph_render_foreground(GstEbur128Graph *graph, cairo_t *ctx, gi
     gst_ebur128graph_render_gauge_label(graph, ctx, &graph->positions.momentary_gauge, "M");
   }
   if (graph->properties.peak_gauge) {
-    //
+    gst_ebur128graph_render_gauge_label(graph, ctx, &graph->positions.peak_gauge, "TP");
   }
 }
 
