@@ -14,7 +14,7 @@ G_DECLARE_FINAL_TYPE(GstEbur128Graph, gst_ebur128graph, GST, EBUR128GRAPH, GstBa
 
 typedef struct _GstEbur128Position GstEbur128Position;
 struct _GstEbur128Position {
-  gint x, y, w, h;
+  guint x, y, w, h;
 };
 
 typedef enum {
@@ -100,6 +100,10 @@ struct _GstEbur128Measurements {
   gdouble short_term;
   gdouble global;
   gdouble range;
+
+  guint peak_num_channels;
+  gdouble *peak_channel;
+  gdouble max_true_peak;
 
   // single-headed ring-buffer
   gint history_size;
