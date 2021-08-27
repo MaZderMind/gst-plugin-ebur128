@@ -658,12 +658,13 @@ static void gst_ebur128graph_finalize(GObject *object) {
   gst_ebur128graph_destroy_cairo(graph);
 
   g_clear_pointer(&graph->measurements.history, g_free);
+  g_clear_pointer(&graph->measurements.peak_channel, g_free);
 }
 
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph) {
   gint rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
   gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
-  gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA;
+  gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA | EBUR128_MODE_TRUE_PEAK;
 
   graph->state = ebur128_init(channels, rate, mode);
 
@@ -899,6 +900,13 @@ static void gst_ebur128graph_recalc_video_interval_frames(GstEbur128Graph *graph
   graph->video_interval_frames = video_interval_frames;
 }
 
+static void setup_measurement_array(gdouble **ptr, guint num_items) {
+  *ptr = g_realloc_n(*ptr, num_items, sizeof(gdouble));
+  for (guint i = 0; i < num_items; i++) {
+    (*ptr)[i] = -HUGE_VAL;
+  }
+}
+
 static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // cleanup existing state
   gst_ebur128graph_destroy_libebur128(graph);
@@ -924,11 +932,10 @@ static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // allocate space for measurements, one measurement per pixel
   graph->measurements.history_size = graph->positions.graph.w - 2;
   graph->measurements.history_head = 0;
-  g_clear_pointer(&graph->measurements.history, g_free);
-  graph->measurements.history = g_malloc_n(graph->measurements.history_size, sizeof(gdouble));
-  for (gint i = 0; i < graph->measurements.history_size; i++) {
-    graph->measurements.history[i] = -HUGE_VAL;
-  }
+  setup_measurement_array(&graph->measurements.history, graph->measurements.history_size);
+
+  graph->measurements.peak_num_channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
+  setup_measurement_array(&graph->measurements.peak_channel, graph->measurements.peak_num_channels);
 
   return TRUE;
 }
@@ -1058,11 +1065,33 @@ static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
   if (!gst_ebur128_validate_lib_return("ebur128_loudness_global", ebur128_loudness_global(graph->state, &global))) {
     return FALSE;
   }
+  gdouble max_true_peak = 0;
+  gdouble channel_value = 0;
+  for (guint channel_index = 0; channel_index < graph->measurements.peak_num_channels; channel_index++) {
+    // maximum true peak in float format (1.0 is 0 dBTP)
+    // The equation to convert to dBTP is: 20 * log10(out)
+    channel_value = 0;
+    if (!gst_ebur128_validate_lib_return("ebur128_true_peak",
+                                         ebur128_prev_true_peak(graph->state, channel_index, &channel_value))) {
+      return FALSE;
+    }
+    graph->measurements.peak_channel[channel_index] = 20 * log10(channel_value);
+
+    channel_value = 0;
+    if (!gst_ebur128_validate_lib_return("ebur128_true_peak",
+                                         ebur128_true_peak(graph->state, channel_index, &channel_value))) {
+      return FALSE;
+    }
+    max_true_peak += channel_value;
+  }
+  max_true_peak /= graph->measurements.peak_num_channels;
+  max_true_peak = 20 * log10(max_true_peak);
 
   graph->measurements.momentary = momentary;
   graph->measurements.short_term = short_term;
   graph->measurements.range = range;
   graph->measurements.global = global;
+  graph->measurements.max_true_peak = max_true_peak;
 
   double measurement = 0;
   switch (graph->properties.measurement) {
