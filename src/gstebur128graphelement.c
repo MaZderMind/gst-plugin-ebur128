@@ -965,7 +965,7 @@ static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   gst_ebur128graph_render_background(graph, graph->background_context, width, height);
 
   // allocate space for measurements, one measurement per pixel
-  graph->measurements.history_size = graph->positions.graph.w - 2;
+  graph->measurements.history_size = graph->positions.graph.w - 1;
   graph->measurements.history_head = 0;
   setup_measurement_array(&graph->measurements.history, graph->measurements.history_size);
 

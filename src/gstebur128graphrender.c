@@ -18,7 +18,7 @@ static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph, cairo_t 
 static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx);
 static void gst_ebur128graph_render_graph_add_datapoint(GstEbur128Graph *graph, cairo_t *ctx,
                                                         const gint datapoint_index, const gint data_point_zero_y,
-                                                        gint *data_point_x);
+                                                        gint data_point_x);
 static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx);
 static void gst_ebur128graph_render_loudness_gauge(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position,
                                                    gdouble measurement);
@@ -239,15 +239,20 @@ static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx)
 
 static void gst_ebur128graph_render_graph_add_datapoint(GstEbur128Graph *graph, cairo_t *ctx,
                                                         const gint datapoint_index, const gint data_point_zero_y,
-                                                        gint *data_point_x) {
+                                                        gint data_point_x) {
   gdouble measurement = graph->measurements.history[datapoint_index];
-  gdouble value_relative_to_target = fmax(measurement - graph->properties.scale_target, graph->properties.scale_to);
+  gdouble value_relative_to_target = measurement - graph->properties.scale_target;
 
   gint data_point_delta_y = (value_relative_to_target - graph->properties.scale_to) * graph->positions.scale_spacing +
                             graph->positions.scale_spacing - 2;
-  cairo_line_to(ctx, *data_point_x, data_point_zero_y - data_point_delta_y);
 
-  (*data_point_x)++;
+  if G_UNLIKELY (data_point_delta_y < 0) {
+    data_point_delta_y = 0;
+  } else if G_UNLIKELY (data_point_delta_y > graph->positions.graph.h - 2) {
+    data_point_delta_y = graph->positions.graph.h - 2;
+  }
+
+  cairo_line_to(ctx, data_point_x, data_point_zero_y - data_point_delta_y);
 }
 
 static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx) {
@@ -257,15 +262,15 @@ static void gst_ebur128graph_render_graph(GstEbur128Graph *graph, cairo_t *ctx) 
   cairo_move_to(ctx, data_point_x, data_point_zero_y);
 
   for (gint i = graph->measurements.history_head; i < graph->measurements.history_size; i++) {
-    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, &data_point_x);
+    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, data_point_x);
+    data_point_x++;
   }
   for (gint i = 0; i < graph->measurements.history_head; i++) {
-    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, &data_point_x);
+    gst_ebur128graph_render_graph_add_datapoint(graph, ctx, i, data_point_zero_y, data_point_x);
+    data_point_x++;
   }
 
-  data_point_x += 1;
-  cairo_line_to(ctx, data_point_x, data_point_zero_y);
-  cairo_line_to(ctx, data_point_x + graph->positions.graph.w - 1, data_point_zero_y);
+  cairo_line_to(ctx, data_point_x - 1, data_point_zero_y);
   cairo_fill(ctx);
 }
 
