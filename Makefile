@@ -61,7 +61,7 @@ run-ebur128graph-noninteractive: build
 run-ebur128graph-still: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
-		ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true color-background=0xFF333333 ! video/x-raw,framerate=1/1 ! videoconvert ! pngenc ! \
+		ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! video/x-raw,framerate=1/1 ! videoconvert ! pngenc ! \
 		identity eos-after=10 ! multifilesink location=builddir/music-and-graph-%d.png
 
 .PHONY: build inspect inspect-ebur128 run-ebur128 format
