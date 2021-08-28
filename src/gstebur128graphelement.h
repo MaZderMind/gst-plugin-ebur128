@@ -89,6 +89,10 @@ struct _GstEbur128Properties {
   gboolean momentary_gauge;
   gboolean peak_gauge;
 
+  // peak gauge
+  gdouble peak_gauge_lower_limit;
+  gdouble peak_gauge_upper_limit;
+
   // font
   gdouble font_size_header;
   gdouble font_size_scale;

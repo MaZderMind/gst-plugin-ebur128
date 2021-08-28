@@ -117,11 +117,8 @@ static double linearize_db(double db) { return 1. - log10(-0.15 * db + 1); }
 
 static void gst_ebur128graph_render_color_areas_peak_gauge(GstEbur128Graph *graph, cairo_t *ctx,
                                                            GstEbur128Position *position) {
-  double too_loud_db = -2.; // TODO make props
-  double not_loud_enough_db = -20.;
-
-  double height_not_loud_enough = position->h * linearize_db(not_loud_enough_db);
-  double height_loudness_ok = position->h * linearize_db(too_loud_db);
+  double height_not_loud_enough = position->h * linearize_db(graph->properties.peak_gauge_lower_limit);
+  double height_loudness_ok = position->h * linearize_db(graph->properties.peak_gauge_upper_limit);
 
   // too_loud
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_too_loud);
@@ -130,13 +127,13 @@ static void gst_ebur128graph_render_color_areas_peak_gauge(GstEbur128Graph *grap
 
   // loudness_ok
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_loudness_ok);
-  cairo_rectangle(ctx, position->x + 1, position->y + 1 + position->h - height_not_loud_enough, position->w - 2,
+  cairo_rectangle(ctx, position->x + 1, position->y + position->h - height_not_loud_enough, position->w - 2,
                   -height_loudness_ok + height_not_loud_enough);
   cairo_fill(ctx);
 
   // not_loud_enough
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_not_loud_enough);
-  cairo_rectangle(ctx, position->x + 1, position->y + position->h - 1, position->w - 2, -height_not_loud_enough);
+  cairo_rectangle(ctx, position->x + 1, position->y + position->h, position->w - 2, -height_not_loud_enough);
   cairo_fill(ctx);
 }
 

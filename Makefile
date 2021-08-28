@@ -54,14 +54,14 @@ run-ebur128graph: build
 run-ebur128graph-noninteractive: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph gauge-short-term=true gauge-momentary=true ! videoconvert ! vp8enc ! mux. \
+		t. ! queue ! ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! videoconvert ! vp8enc ! mux. \
 		t. ! queue ! vorbisenc ! mux. \
 		webmmux name=mux ! filesink location=builddir/music-and-graph.webm
 
 run-ebur128graph-still: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
-		ebur128graph gauge-short-term=true gauge-momentary=true gauge-peak=true color-background=0xFF333333 ! video/x-raw,framerate=1/1 ! videoconvert ! pngenc ! \
+		ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true color-background=0xFF333333 ! video/x-raw,framerate=1/1 ! videoconvert ! pngenc ! \
 		identity eos-after=10 ! multifilesink location=builddir/music-and-graph-%d.png
 
 .PHONY: build inspect inspect-ebur128 run-ebur128 format

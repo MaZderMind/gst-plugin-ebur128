@@ -65,7 +65,10 @@ enum {
 
   PROP_SHORT_TERM_GAUGE,
   PROP_MOMENTARY_GAUGE,
-  PROP_PEAK_GAUGE
+  PROP_PEAK_GAUGE,
+
+  PROP_PEAK_GAUGE_LOWER_LIMIT,
+  PROP_PEAK_GAUGE_UPPER_LIMIT
 };
 
 #define DEFAULT_COLOR_BACKGROUND 0xFF000000
@@ -97,6 +100,9 @@ enum {
 #define DEFAULT_SHORT_TERM_GAUGE FALSE
 #define DEFAULT_MOMENTARY_GAUGE TRUE
 #define DEFAULT_PEAK_GAUGE FALSE
+
+#define DEFAULT_PEAK_GAUGE_LOWER_LIMIT -20.0
+#define DEFAULT_PEAK_GAUGE_UPPER_LIMIT -2.0
 
 #define GST_TYPE_EBUR128GRAPH_SCALE_MODE (gst_ebur128graph_scale_mode_get_type())
 static GType gst_ebur128graph_scale_mode_get_type(void) {
@@ -323,20 +329,34 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
   g_object_class_install_property(
       gobject_class, PROP_SHORT_TERM_GAUGE,
-      g_param_spec_boolean("gauge-short-term", "Short-Term Loudness Gauge", "Enable Short-Term Loudness Gauge",
+      g_param_spec_boolean("short-term-gauge", "Short-Term Loudness Gauge", "Enable Short-Term Loudness Gauge",
                            DEFAULT_SHORT_TERM_GAUGE,
                            G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_MOMENTARY_GAUGE,
-      g_param_spec_boolean("gauge-momentary", "Momentary Loudness Gauge", "Enable Momentary Loudness Gauge",
+      g_param_spec_boolean("momentary-gauge", "Momentary Loudness Gauge", "Enable Momentary Loudness Gauge",
                            DEFAULT_MOMENTARY_GAUGE,
                            G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   g_object_class_install_property(
       gobject_class, PROP_PEAK_GAUGE,
-      g_param_spec_boolean("gauge-peak", "True-Peak Gauge", "Enable True-Peak Gauge", DEFAULT_PEAK_GAUGE,
+      g_param_spec_boolean("peak-gauge", "True-Peak Gauge", "Enable True-Peak Gauge", DEFAULT_PEAK_GAUGE,
                            G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE_LOWER_LIMIT,
+      g_param_spec_double("peak-gauge-lower-limit", "True-Peak-Gauge: Lower Limit in dBTP",
+                          "Lower-Limit of the \"OK\" Area in the True-Peak-Gauge in dbTP",
+                          /* MIN */ -60.0, /* MAX */ -0.0, DEFAULT_PEAK_GAUGE_LOWER_LIMIT,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE_UPPER_LIMIT,
+      g_param_spec_double("peak-gauge-upper-limit", "True-Peak-Gauge: Upper Limit in dBTP",
+                          "Upper-Limit of the \"OK\" Area in the True-Peak-Gauge in dbTP",
+                          /* MIN */ -60.0, /* MAX */ -0.0, DEFAULT_PEAK_GAUGE_UPPER_LIMIT,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
   gst_element_class_add_static_pad_template(element_class, &src_template_factory);
@@ -644,6 +664,9 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.momentary_gauge = DEFAULT_MOMENTARY_GAUGE;
   graph->properties.peak_gauge = DEFAULT_PEAK_GAUGE;
 
+  graph->properties.peak_gauge_lower_limit = DEFAULT_PEAK_GAUGE_LOWER_LIMIT;
+  graph->properties.peak_gauge_upper_limit = DEFAULT_PEAK_GAUGE_UPPER_LIMIT;
+
   // measurements
   graph->measurements.momentary = 0;
   graph->measurements.short_term = 0;
@@ -754,6 +777,12 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
   case PROP_PEAK_GAUGE:
     graph->properties.peak_gauge = g_value_get_boolean(value);
     break;
+  case PROP_PEAK_GAUGE_LOWER_LIMIT:
+    graph->properties.peak_gauge_lower_limit = g_value_get_double(value);
+    break;
+  case PROP_PEAK_GAUGE_UPPER_LIMIT:
+    graph->properties.peak_gauge_upper_limit = g_value_get_double(value);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -832,6 +861,12 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
     break;
   case PROP_PEAK_GAUGE:
     g_value_set_boolean(value, graph->properties.peak_gauge);
+    break;
+  case PROP_PEAK_GAUGE_LOWER_LIMIT:
+    g_value_set_double(value, graph->properties.peak_gauge_lower_limit);
+    break;
+  case PROP_PEAK_GAUGE_UPPER_LIMIT:
+    g_value_set_double(value, graph->properties.peak_gauge_upper_limit);
     break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
