@@ -987,6 +987,11 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   guint gauges_reserved_space = (graph->properties.gauge_w + gutter) * num_gauges;
   guint gauges_reserved_space_left = (graph->properties.gauge_w + gutter) * num_gauges_left;
 
+  if (graph->properties.peak_gauge) {
+    gauges_reserved_space += graph->properties.scale_w;
+    gauges_reserved_space_left += graph->properties.scale_w;
+  }
+
   cairo_text_extents_t extents;
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
   cairo_set_font_size(ctx, graph->properties.font_size_header);
@@ -994,7 +999,7 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   gint font_height_header = extents.height;
 
   // header
-  graph->positions.header.w = width - gutter - graph->properties.scale_w - gutter - gutter;
+  graph->positions.header.w = width - gutter - gutter;
   graph->positions.header.h = font_height_header;
   graph->positions.header.x = gutter;
   graph->positions.header.y = gutter;
@@ -1023,7 +1028,7 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   }
 
   graph->positions.peak_gauge = gauge_position;
-  graph->positions.peak_gauge.x = gutter;
+  graph->positions.peak_gauge.x = gutter + graph->properties.scale_w;
 
   // graph
   graph->positions.graph.w = width - gutter - graph->positions.scale.w - gutter - gutter - gauges_reserved_space;

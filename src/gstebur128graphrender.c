@@ -27,6 +27,8 @@ static void gst_ebur128graph_render_db_gauge(GstEbur128Graph *graph, cairo_t *ct
 static void gst_ebur128graph_render_scale_lines(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position);
 static void gst_ebur128graph_render_gauge_label(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position,
                                                 const char *label);
+static void gst_ebur128graph_render_peak_gauge_scale(GstEbur128Graph *graph, cairo_t *ctx,
+                                                     GstEbur128Position *position);
 static void cairo_set_source_rgba_from_argb_int(cairo_t *ctx, int argb_color);
 
 void gst_ebur128graph_render_init() {
@@ -115,8 +117,8 @@ static double linearize_db(double db) { return 1. - log10(-0.15 * db + 1); }
 
 static void gst_ebur128graph_render_color_areas_peak_gauge(GstEbur128Graph *graph, cairo_t *ctx,
                                                            GstEbur128Position *position) {
-  double too_loud_db = -2.5;
-  double not_loud_enough_db = -20.0;
+  double too_loud_db = -2.; // TODO make props
+  double not_loud_enough_db = -20.;
 
   double height_not_loud_enough = position->h * linearize_db(not_loud_enough_db);
   double height_loudness_ok = position->h * linearize_db(too_loud_db);
@@ -166,7 +168,7 @@ static void gst_ebur128graph_render_scale_texts(GstEbur128Graph *graph, cairo_t 
   gchar scale_text[10];
   for (gint scale_index = 0; scale_index < graph->positions.num_scales;
        scale_index += graph->positions.scale_show_every) {
-    gst_ebur128graph_scale_text(graph, scale_text, 10, scale_index);
+    gst_ebur128graph_scale_text(graph, scale_text, sizeof(scale_text) / sizeof(*scale_text), scale_index);
 
     cairo_text_extents_t extents;
     cairo_text_extents(ctx, scale_text, &extents);
@@ -209,6 +211,7 @@ void gst_ebur128graph_render_foreground(GstEbur128Graph *graph, cairo_t *ctx, gi
     gst_ebur128graph_render_db_gauge(graph, ctx, &graph->positions.peak_gauge, graph->measurements.peak_num_channels,
                                      graph->measurements.peak_channel);
     gst_ebur128graph_render_gauge_label(graph, ctx, &graph->positions.peak_gauge, "TP");
+    gst_ebur128graph_render_peak_gauge_scale(graph, ctx, &graph->positions.peak_gauge);
   }
 }
 
@@ -338,6 +341,31 @@ static void gst_ebur128graph_render_gauge_label(GstEbur128Graph *graph, cairo_t 
 
   cairo_move_to(ctx, text_x, position->y + position->h - 5);
   cairo_show_text(ctx, label);
+  cairo_fill(ctx);
+}
+
+static void gst_ebur128graph_render_peak_gauge_scale(GstEbur128Graph *graph, cairo_t *ctx,
+                                                     GstEbur128Position *position) {
+  cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
+  cairo_set_font_size(ctx, graph->properties.font_size_scale);
+  cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_scale);
+
+  gchar buffer[10];
+  int dbs[] = {-40, -20, -10, -5, -4, -3, -2, -1};
+  for (unsigned int i = 0; i < sizeof(dbs) / sizeof(*dbs); i++) {
+    int db = dbs[i];
+    g_snprintf(buffer, sizeof(buffer) / sizeof(*buffer), "%i", db);
+
+    cairo_text_extents_t extents;
+    cairo_text_extents(ctx, buffer, &extents);
+
+    gint text_x = position->x - extents.width - graph->properties.gutter;
+    double text_y = position->y + position->h - (linearize_db(db) * position->h) + (extents.height / 2 - 1);
+
+    cairo_move_to(ctx, text_x, text_y);
+    cairo_show_text(ctx, buffer);
+  }
+
   cairo_fill(ctx);
 }
 
