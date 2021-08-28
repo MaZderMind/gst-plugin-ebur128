@@ -61,7 +61,14 @@ enum {
   PROP_FONT_SIZE_SCALE,
 
   PROP_MEASUREMENT,
-  PROP_TIMEBASE
+  PROP_TIMEBASE,
+
+  PROP_SHORT_TERM_GAUGE,
+  PROP_MOMENTARY_GAUGE,
+  PROP_PEAK_GAUGE,
+
+  PROP_PEAK_GAUGE_LOWER_LIMIT,
+  PROP_PEAK_GAUGE_UPPER_LIMIT
 };
 
 #define DEFAULT_COLOR_BACKGROUND 0xFF000000
@@ -89,6 +96,13 @@ enum {
 
 #define DEFAULT_MEASUREMENT GST_EBUR128_MEASUREMENT_SHORT_TERM
 #define DEFAULT_TIMEBASE (60 * GST_SECOND)
+
+#define DEFAULT_SHORT_TERM_GAUGE FALSE
+#define DEFAULT_MOMENTARY_GAUGE TRUE
+#define DEFAULT_PEAK_GAUGE FALSE
+
+#define DEFAULT_PEAK_GAUGE_LOWER_LIMIT -20.0
+#define DEFAULT_PEAK_GAUGE_UPPER_LIMIT -2.0
 
 #define GST_TYPE_EBUR128GRAPH_SCALE_MODE (gst_ebur128graph_scale_mode_get_type())
 static GType gst_ebur128graph_scale_mode_get_type(void) {
@@ -169,6 +183,7 @@ static cairo_format_t gst_ebur128graph_get_cairo_format(GstEbur128Graph *graph);
 /* initialize the ebur128's class */
 static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
   GST_DEBUG_CATEGORY_INIT(gst_ebur128graph_debug, "ebur128graph", 0, "ebur128graph Element");
+  gst_ebur128graph_render_init();
 
   GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
   GstElementClass *element_class = GST_ELEMENT_CLASS(klass);
@@ -310,6 +325,37 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
       g_param_spec_uint64("timebase", "Timebase", "Time as displayed on the X-Axis (in nanoseconds)",
                           /* MIN */ 0,
                           /* MAX */ G_MAXUINT64, DEFAULT_TIMEBASE,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_SHORT_TERM_GAUGE,
+      g_param_spec_boolean("short-term-gauge", "Short-Term Loudness Gauge", "Enable Short-Term Loudness Gauge",
+                           DEFAULT_SHORT_TERM_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_MOMENTARY_GAUGE,
+      g_param_spec_boolean("momentary-gauge", "Momentary Loudness Gauge", "Enable Momentary Loudness Gauge",
+                           DEFAULT_MOMENTARY_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE,
+      g_param_spec_boolean("peak-gauge", "True-Peak Gauge", "Enable True-Peak Gauge", DEFAULT_PEAK_GAUGE,
+                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE_LOWER_LIMIT,
+      g_param_spec_double("peak-gauge-lower-limit", "True-Peak-Gauge: Lower Limit in dBTP",
+                          "Lower-Limit of the \"OK\" Area in the True-Peak-Gauge in dbTP",
+                          /* MIN */ -60.0, /* MAX */ -0.0, DEFAULT_PEAK_GAUGE_LOWER_LIMIT,
+                          G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+
+  g_object_class_install_property(
+      gobject_class, PROP_PEAK_GAUGE_UPPER_LIMIT,
+      g_param_spec_double("peak-gauge-upper-limit", "True-Peak-Gauge: Upper Limit in dBTP",
+                          "Upper-Limit of the \"OK\" Area in the True-Peak-Gauge in dbTP",
+                          /* MIN */ -60.0, /* MAX */ -0.0, DEFAULT_PEAK_GAUGE_UPPER_LIMIT,
                           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
   gst_element_class_add_static_pad_template(element_class, &sink_template_factory);
@@ -613,6 +659,14 @@ static void gst_ebur128graph_init(GstEbur128Graph *graph) {
   graph->properties.measurement = DEFAULT_MEASUREMENT;
   graph->properties.timebase = DEFAULT_TIMEBASE;
 
+  // gauges
+  graph->properties.short_term_gauge = DEFAULT_SHORT_TERM_GAUGE;
+  graph->properties.momentary_gauge = DEFAULT_MOMENTARY_GAUGE;
+  graph->properties.peak_gauge = DEFAULT_PEAK_GAUGE;
+
+  graph->properties.peak_gauge_lower_limit = DEFAULT_PEAK_GAUGE_LOWER_LIMIT;
+  graph->properties.peak_gauge_upper_limit = DEFAULT_PEAK_GAUGE_UPPER_LIMIT;
+
   // measurements
   graph->measurements.momentary = 0;
   graph->measurements.short_term = 0;
@@ -627,12 +681,13 @@ static void gst_ebur128graph_finalize(GObject *object) {
   gst_ebur128graph_destroy_cairo(graph);
 
   g_clear_pointer(&graph->measurements.history, g_free);
+  g_clear_pointer(&graph->measurements.peak_channel, g_free);
 }
 
 static void gst_ebur128graph_init_libebur128(GstEbur128Graph *graph) {
   gint rate = GST_AUDIO_INFO_RATE(&graph->audio_info);
   gint channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
-  gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA;
+  gint mode = EBUR128_MODE_M | EBUR128_MODE_S | EBUR128_MODE_I | EBUR128_MODE_LRA | EBUR128_MODE_TRUE_PEAK;
 
   graph->state = ebur128_init(channels, rate, mode);
 
@@ -713,6 +768,21 @@ static void gst_ebur128graph_set_property(GObject *object, guint prop_id, const 
   case PROP_TIMEBASE:
     graph->properties.timebase = g_value_get_uint64(value);
     break;
+  case PROP_SHORT_TERM_GAUGE:
+    graph->properties.short_term_gauge = g_value_get_boolean(value);
+    break;
+  case PROP_MOMENTARY_GAUGE:
+    graph->properties.momentary_gauge = g_value_get_boolean(value);
+    break;
+  case PROP_PEAK_GAUGE:
+    graph->properties.peak_gauge = g_value_get_boolean(value);
+    break;
+  case PROP_PEAK_GAUGE_LOWER_LIMIT:
+    graph->properties.peak_gauge_lower_limit = g_value_get_double(value);
+    break;
+  case PROP_PEAK_GAUGE_UPPER_LIMIT:
+    graph->properties.peak_gauge_upper_limit = g_value_get_double(value);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -783,6 +853,21 @@ static void gst_ebur128graph_get_property(GObject *object, guint prop_id, GValue
   case PROP_TIMEBASE:
     g_value_set_uint64(value, graph->properties.timebase);
     break;
+  case PROP_SHORT_TERM_GAUGE:
+    g_value_set_boolean(value, graph->properties.short_term_gauge);
+    break;
+  case PROP_MOMENTARY_GAUGE:
+    g_value_set_boolean(value, graph->properties.momentary_gauge);
+    break;
+  case PROP_PEAK_GAUGE:
+    g_value_set_boolean(value, graph->properties.peak_gauge);
+    break;
+  case PROP_PEAK_GAUGE_LOWER_LIMIT:
+    g_value_set_double(value, graph->properties.peak_gauge_lower_limit);
+    break;
+  case PROP_PEAK_GAUGE_UPPER_LIMIT:
+    g_value_set_double(value, graph->properties.peak_gauge_upper_limit);
+    break;
   default:
     G_OBJECT_WARN_INVALID_PROPERTY_ID(object, prop_id, pspec);
     break;
@@ -850,6 +935,13 @@ static void gst_ebur128graph_recalc_video_interval_frames(GstEbur128Graph *graph
   graph->video_interval_frames = video_interval_frames;
 }
 
+static void setup_measurement_array(gdouble **ptr, guint num_items) {
+  *ptr = g_realloc_n(*ptr, num_items, sizeof(gdouble));
+  for (guint i = 0; i < num_items; i++) {
+    (*ptr)[i] = -HUGE_VAL;
+  }
+}
+
 static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // cleanup existing state
   gst_ebur128graph_destroy_libebur128(graph);
@@ -875,11 +967,10 @@ static gboolean gst_ebur128graph_setup(GstEbur128Graph *graph) {
   // allocate space for measurements, one measurement per pixel
   graph->measurements.history_size = graph->positions.graph.w - 2;
   graph->measurements.history_head = 0;
-  g_clear_pointer(&graph->measurements.history, g_free);
-  graph->measurements.history = g_malloc_n(graph->measurements.history_size, sizeof(gdouble));
-  for (gint i = 0; i < graph->measurements.history_size; i++) {
-    graph->measurements.history[i] = -HUGE_VAL;
-  }
+  setup_measurement_array(&graph->measurements.history, graph->measurements.history_size);
+
+  graph->measurements.peak_num_channels = GST_AUDIO_INFO_CHANNELS(&graph->audio_info);
+  setup_measurement_array(&graph->measurements.peak_channel, graph->measurements.peak_num_channels);
 
   return TRUE;
 }
@@ -919,6 +1010,23 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
 
   gint gutter = graph->properties.gutter;
 
+  guint num_gauges_left = graph->properties.peak_gauge;
+  guint num_gauges_right = graph->properties.short_term_gauge + graph->properties.momentary_gauge;
+  guint num_gauges = num_gauges_left + num_gauges_right;
+
+  GST_INFO_OBJECT(graph, "short_term_gauge=%d momentary_gauge=%d peak_gauge=%d", graph->properties.short_term_gauge,
+                  graph->properties.momentary_gauge, graph->properties.peak_gauge);
+  GST_INFO_OBJECT(graph, "num_gauges_left=%d num_gauges_right=%d num_gauges=%d", num_gauges_left, num_gauges_right,
+                  num_gauges);
+
+  guint gauges_reserved_space = (graph->properties.gauge_w + gutter) * num_gauges;
+  guint gauges_reserved_space_left = (graph->properties.gauge_w + gutter) * num_gauges_left;
+
+  if (graph->properties.peak_gauge) {
+    gauges_reserved_space += graph->properties.scale_w;
+    gauges_reserved_space_left += graph->properties.scale_w;
+  }
+
   cairo_text_extents_t extents;
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
   cairo_set_font_size(ctx, graph->properties.font_size_header);
@@ -926,28 +1034,41 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
   gint font_height_header = extents.height;
 
   // header
-  graph->positions.header.w = width - gutter - graph->properties.scale_w - gutter - gutter;
+  graph->positions.header.w = width - gutter - gutter;
   graph->positions.header.h = font_height_header;
-  graph->positions.header.x = gutter + graph->properties.scale_w + gutter;
+  graph->positions.header.x = gutter;
   graph->positions.header.y = gutter;
 
   // scale
   graph->positions.scale.w = graph->properties.scale_w;
   graph->positions.scale.h = height - graph->positions.header.h - gutter - gutter - gutter;
-  graph->positions.scale.x = gutter;
+  graph->positions.scale.x = gutter + gauges_reserved_space_left;
   graph->positions.scale.y = gutter + graph->positions.header.h + gutter;
 
-  // gauge
-  graph->positions.gauge.w = graph->properties.gauge_w;
-  graph->positions.gauge.h = graph->positions.scale.h;
-  graph->positions.gauge.x = width - graph->positions.gauge.w - gutter;
-  graph->positions.gauge.y = graph->positions.scale.y;
+  // gauges
+  GstEbur128Position gauge_position;
+  gauge_position.w = graph->properties.gauge_w;
+  gauge_position.h = graph->positions.scale.h;
+  gauge_position.x = width - (num_gauges_right * (graph->properties.gauge_w + gutter));
+  gauge_position.y = graph->positions.scale.y;
+
+  if (graph->properties.short_term_gauge) {
+    graph->positions.short_term_gauge = gauge_position;
+    gauge_position.x += graph->properties.gauge_w + gutter;
+  }
+
+  if (graph->properties.momentary_gauge) {
+    graph->positions.momentary_gauge = gauge_position;
+    gauge_position.x += graph->properties.gauge_w + gutter;
+  }
+
+  graph->positions.peak_gauge = gauge_position;
+  graph->positions.peak_gauge.x = gutter + graph->properties.scale_w;
 
   // graph
-  graph->positions.graph.w =
-      width - gutter - graph->positions.scale.w - gutter - gutter - graph->positions.gauge.w - gutter;
+  graph->positions.graph.w = width - gutter - graph->positions.scale.w - gutter - gutter - gauges_reserved_space;
   graph->positions.graph.h = graph->positions.scale.h;
-  graph->positions.graph.x = gutter + graph->positions.scale.w + gutter;
+  graph->positions.graph.x = gutter + graph->positions.scale.w + gutter + gauges_reserved_space_left;
   graph->positions.graph.y = graph->positions.scale.y;
 
   // scales
@@ -984,11 +1105,33 @@ static gboolean gst_ebur128graph_take_measurement(GstEbur128Graph *graph) {
   if (!gst_ebur128_validate_lib_return("ebur128_loudness_global", ebur128_loudness_global(graph->state, &global))) {
     return FALSE;
   }
+  gdouble max_true_peak = 0;
+  gdouble channel_value = 0;
+  for (guint channel_index = 0; channel_index < graph->measurements.peak_num_channels; channel_index++) {
+    // maximum true peak in float format (1.0 is 0 dBTP)
+    // The equation to convert to dBTP is: 20 * log10(out)
+    channel_value = 0;
+    if (!gst_ebur128_validate_lib_return("ebur128_true_peak",
+                                         ebur128_prev_true_peak(graph->state, channel_index, &channel_value))) {
+      return FALSE;
+    }
+    graph->measurements.peak_channel[channel_index] = 20 * log10(channel_value);
+
+    channel_value = 0;
+    if (!gst_ebur128_validate_lib_return("ebur128_true_peak",
+                                         ebur128_true_peak(graph->state, channel_index, &channel_value))) {
+      return FALSE;
+    }
+    max_true_peak += channel_value;
+  }
+  max_true_peak /= graph->measurements.peak_num_channels;
+  max_true_peak = 20 * log10(max_true_peak);
 
   graph->measurements.momentary = momentary;
   graph->measurements.short_term = short_term;
   graph->measurements.range = range;
   graph->measurements.global = global;
+  graph->measurements.max_true_peak = max_true_peak;
 
   double measurement = 0;
   switch (graph->properties.measurement) {

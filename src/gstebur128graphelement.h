@@ -14,7 +14,7 @@ G_DECLARE_FINAL_TYPE(GstEbur128Graph, gst_ebur128graph, GST, EBUR128GRAPH, GstBa
 
 typedef struct _GstEbur128Position GstEbur128Position;
 struct _GstEbur128Position {
-  gint x, y, w, h;
+  guint x, y, w, h;
 };
 
 typedef enum {
@@ -45,7 +45,9 @@ typedef struct _GstEbur128Positions GstEbur128Positions;
 struct _GstEbur128Positions {
   GstEbur128Position header;
   GstEbur128Position scale;
-  GstEbur128Position gauge;
+  GstEbur128Position short_term_gauge;
+  GstEbur128Position momentary_gauge;
+  GstEbur128Position peak_gauge;
   GstEbur128Position graph;
 
   gint num_scales;
@@ -82,6 +84,15 @@ struct _GstEbur128Properties {
   GstEbur128Measurement measurement;
   GstClockTime timebase;
 
+  // gauges
+  gboolean short_term_gauge;
+  gboolean momentary_gauge;
+  gboolean peak_gauge;
+
+  // peak gauge
+  gdouble peak_gauge_lower_limit;
+  gdouble peak_gauge_upper_limit;
+
   // font
   gdouble font_size_header;
   gdouble font_size_scale;
@@ -93,6 +104,10 @@ struct _GstEbur128Measurements {
   gdouble short_term;
   gdouble global;
   gdouble range;
+
+  guint peak_num_channels;
+  gdouble *peak_channel;
+  gdouble max_true_peak;
 
   // single-headed ring-buffer
   gint history_size;
