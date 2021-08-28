@@ -220,14 +220,14 @@ static void gst_ebur128graph_render_header(GstEbur128Graph *graph, cairo_t *ctx)
   gchar header_str[200];
   g_snprintf(header_str, 200,
              "TARGET: %+d LUFS | "
-             "M: %+7.2f %s | "
-             "S: %+7.2f %s | "
-             "I: %+7.2f %s | "
-             "LRA: %+7.2f LU",
-             // TODO TPmax (in dBTP)
+             "M: %+6.1f %s | "
+             "S: %+6.1f %s | "
+             "I: %+6.1f %s | "
+             "LRA: %+7.2f LU | "
+             "TPmax: %+5.1f db",
              graph->properties.scale_target, graph->measurements.momentary - correction, unit,
              graph->measurements.short_term - correction, unit, graph->measurements.global - correction, unit,
-             graph->measurements.range);
+             graph->measurements.range, graph->measurements.max_true_peak);
 
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
   cairo_set_font_size(ctx, graph->properties.font_size_header);
