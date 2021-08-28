@@ -205,7 +205,7 @@ static void gst_ebur128graph_class_init(GstEbur128GraphClass *klass) {
 
   g_object_class_install_property(
       gobject_class, PROP_COLOR_BACKGROUND,
-      g_param_spec_uint("color-background", "Background-Color", "Color od the Background (big-endian ARGB)",
+      g_param_spec_uint("color-background", "Background-Color", "Color of the Background (big-endian ARGB)",
                         /* MIN */ 0, /* MAX */ G_MAXUINT32, DEFAULT_COLOR_BACKGROUND,
                         G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
 
