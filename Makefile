@@ -48,7 +48,7 @@ run-ebur128-with-seek: build
 run-ebur128graph: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph ! videoconvert ! ximagesink \
+		t. ! queue ! ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 
 run-ebur128graph-noninteractive: build
