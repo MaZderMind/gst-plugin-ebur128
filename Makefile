@@ -30,9 +30,9 @@ run-example-py: builddir
 
 run-ebur128: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
-	  filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
-      ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true interval=100000000 ! \
-	  autoaudiosink
+		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
+		ebur128 momentary=true shortterm=true global=true window=5000 range=true sample-peak=true true-peak=true interval=100000000 ! \
+		autoaudiosink
 
 run-ebur128-with-seek: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 -m \
