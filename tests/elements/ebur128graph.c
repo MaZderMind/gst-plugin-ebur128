@@ -433,7 +433,6 @@ static void test_bool_property(const char *prop_name) {
   g_object_get(element, prop_name, &read_back, NULL);
   fail_unless(read_back == FALSE);
 
-
   value = TRUE;
   g_object_set(element, prop_name, value, NULL);
   read_back = FALSE;
@@ -545,7 +544,6 @@ GST_END_TEST;
 
 GST_START_TEST(test_peak_gauge_upper_limi) { test_double_property("peak_gauge_upper_limit", -25.75); }
 GST_END_TEST;
-
 
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128graph");
