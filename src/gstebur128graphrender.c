@@ -41,6 +41,16 @@ static gint clamp(gint in, gint min, gint max) {
   }
 }
 
+static gdouble clamp_d(gdouble in, gdouble min, gdouble max) {
+  if (G_UNLIKELY(in < min)) {
+    return min;
+  } else if (G_UNLIKELY(in > max)) {
+    return max;
+  } else {
+    return in;
+  }
+}
+
 static gint min(gint a, gint b) {
   if (a < b) {
     return a;
@@ -278,11 +288,7 @@ static void gst_ebur128graph_render_graph_add_datapoint(GstEbur128Graph *graph, 
   gint data_point_delta_y = (value_relative_to_target - graph->properties.scale_to) * graph->positions.scale_spacing +
                             graph->positions.scale_spacing - 2;
 
-  if G_UNLIKELY (data_point_delta_y < 0) {
-    data_point_delta_y = 0;
-  } else if G_UNLIKELY (data_point_delta_y > graph->positions.graph.h - 2) {
-    data_point_delta_y = graph->positions.graph.h - 2;
-  }
+  data_point_delta_y = clamp(data_point_delta_y, 0, graph->positions.graph.h - 2);
 
   cairo_line_to(ctx, data_point_x, data_point_zero_y - data_point_delta_y);
 }
@@ -313,9 +319,7 @@ static void gst_ebur128graph_render_loudness_gauge(GstEbur128Graph *graph, cairo
   gint data_point_delta_y = (value_relative_to_target - graph->properties.scale_to) * graph->positions.scale_spacing +
                             graph->positions.scale_spacing - 2;
 
-  if (data_point_delta_y > position->h - 2) {
-    data_point_delta_y = position->h - 2;
-  }
+  data_point_delta_y = clamp(data_point_delta_y, G_MININT, position->h - 2);
 
   cairo_rectangle(ctx, position->x + 1, position->y + position->h - 1, position->w - 2, -data_point_delta_y);
   cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_graph);
@@ -333,11 +337,7 @@ static void gst_ebur128graph_render_db_gauge(GstEbur128Graph *graph, cairo_t *ct
     double height = linearized * position->h;
 
     // 2px for the Border
-    if (height > position->h - 2) {
-      height = position->h - 2;
-    } else if (height < 0) {
-      height = 0;
-    }
+    height = clamp_d(height, 0, position->h - 2);
 
     cairo_rectangle(ctx, x + 1, position->y + position->h - 1, bar_width, -height);
     x += bar_width;
