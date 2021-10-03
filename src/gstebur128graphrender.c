@@ -49,14 +49,6 @@ static gint min(gint a, gint b) {
   }
 }
 
-static gint max(gint a, gint b) {
-  if (a > b) {
-    return a;
-  } else {
-    return b;
-  }
-}
-
 void gst_ebur128graph_render_init() {
   GST_DEBUG_CATEGORY_INIT(gst_ebur128graphrenderer_debug, "ebur128graphrenderer", 0, "ebur128graph Renderer");
 }
