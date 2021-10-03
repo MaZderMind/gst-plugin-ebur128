@@ -1073,7 +1073,7 @@ static void gst_ebur128graph_calculate_positions(GstEbur128Graph *graph) {
 
   // scales
   graph->positions.num_scales = -(graph->properties.scale_to - graph->properties.scale_from) + 1;
-  graph->positions.scale_spacing = (double)graph->positions.scale.h / (graph->positions.num_scales + 1);
+  graph->positions.scale_spacing = (double)(graph->positions.scale.h - 2) / (graph->positions.num_scales + 1);
 
   cairo_select_font_face(ctx, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
   cairo_set_font_size(ctx, graph->properties.font_size_scale);
