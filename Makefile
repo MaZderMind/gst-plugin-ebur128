@@ -48,20 +48,7 @@ run-ebur128-with-seek: build
 run-ebur128graph: build
 	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
 		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! videoconvert ! ximagesink \
+		t. ! queue ! ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true scale-from=1  ! videoconvert ! ximagesink \
 		t. ! queue ! autoaudiosink
 
-run-ebur128graph-noninteractive: build
-	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
-		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! tee name=t \
-		t. ! queue ! ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! videoconvert ! vp8enc ! mux. \
-		t. ! queue ! vorbisenc ! mux. \
-		webmmux name=mux ! filesink location=builddir/music-and-graph.webm
-
-run-ebur128graph-still: build
-	GST_PLUGIN_PATH=$(realpath builddir) gst-launch-1.0 \
-		filesrc location=examples/music.mp3 ! mpegaudioparse ! mpg123audiodec ! \
-		ebur128graph short-term-gauge=true momentary-gauge=true peak-gauge=true ! video/x-raw,framerate=1/1 ! videoconvert ! pngenc ! \
-		identity eos-after=10 ! multifilesink location=builddir/music-and-graph-%d.png
-
-.PHONY: build inspect inspect-ebur128 run-ebur128 format
+.PHONY: build clean format inspect inspect-ebur128 inspect-ebur128graph run-tests run-example-py run-ebur128 run-ebur128-with-seek run-ebur128graph
