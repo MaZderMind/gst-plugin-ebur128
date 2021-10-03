@@ -32,9 +32,9 @@ static void gst_ebur128graph_render_peak_gauge_scale(GstEbur128Graph *graph, cai
 static void cairo_set_source_rgba_from_argb_int(cairo_t *ctx, int argb_color);
 
 static gint clamp(gint in, gint min, gint max) {
-  if(G_UNLIKELY(in < min)) {
+  if (G_UNLIKELY(in < min)) {
     return min;
-  } else if(G_UNLIKELY(in > max)) {
+  } else if (G_UNLIKELY(in > max)) {
     return max;
   } else {
     return in;
@@ -42,7 +42,7 @@ static gint clamp(gint in, gint min, gint max) {
 }
 
 static gint min(gint a, gint b) {
-  if(a < b) {
+  if (a < b) {
     return a;
   } else {
     return b;
@@ -50,7 +50,7 @@ static gint min(gint a, gint b) {
 }
 
 static gint max(gint a, gint b) {
-  if(a > b) {
+  if (a > b) {
     return a;
   } else {
     return b;
@@ -111,19 +111,17 @@ static void gst_ebur128graph_render_border(GstEbur128Graph *graph, cairo_t *ctx,
 static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t *ctx, GstEbur128Position *position) {
   gint total = abs(graph->properties.scale_from - graph->properties.scale_to);
   gint num_too_loud = clamp(graph->properties.scale_from, 0, G_MAXINT);
-  gint num_loudness_ok = min(
-    clamp(2 - graph->properties.scale_to, 0, 2),
-    clamp(graph->properties.scale_from + 2, 0, 2)
-  );
+  gint num_loudness_ok =
+      min(clamp(2 - graph->properties.scale_to, 0, 2), clamp(graph->properties.scale_from + 2, 0, 2));
   gint num_not_loud_enough = clamp(total - num_too_loud - num_loudness_ok + 2, 0, G_MAXINT);
 
-  GST_INFO("from %d to %d (total %d steps): num_too_loud=%d, num_ok=%d, num_not_loud_enough=%d", graph->properties.scale_from,
-           graph->properties.scale_to, total, num_too_loud,
-           num_loudness_ok, num_not_loud_enough);
+  GST_INFO("from %d to %d (total %d steps): num_too_loud=%d, num_ok=%d, num_not_loud_enough=%d",
+           graph->properties.scale_from, graph->properties.scale_to, total, num_too_loud, num_loudness_ok,
+           num_not_loud_enough);
 
   // too_loud
   double height_too_loud = 0;
-  if(num_too_loud > 0) {
+  if (num_too_loud > 0) {
     height_too_loud = graph->positions.scale_spacing * num_too_loud;
     cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_too_loud);
     cairo_rectangle(ctx, position->x + 1, position->y + 1, position->w - 2, height_too_loud);
@@ -132,7 +130,7 @@ static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t 
 
   // loudness_ok
   double height_loudness_ok = 0;
-  if(num_loudness_ok > 0) {
+  if (num_loudness_ok > 0) {
     height_loudness_ok = graph->positions.scale_spacing * num_loudness_ok;
     cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_loudness_ok);
     cairo_rectangle(ctx, position->x + 1, position->y + 1 + height_too_loud, position->w - 2, height_loudness_ok);
@@ -140,7 +138,7 @@ static void gst_ebur128graph_render_color_areas(GstEbur128Graph *graph, cairo_t 
   }
 
   double height_not_loud_enough = 0;
-  if(num_not_loud_enough > 0) {
+  if (num_not_loud_enough > 0) {
     height_not_loud_enough = graph->positions.scale_spacing * num_not_loud_enough;
     // not_loud_enough
     cairo_set_source_rgba_from_argb_int(ctx, graph->properties.color_not_loud_enough);
