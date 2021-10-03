@@ -414,14 +414,31 @@ static void test_int_property(const char *prop_name) {
   fail_unless(read_back == -42);
 }
 
-static void test_double_property(const char *prop_name) {
+static void test_double_property(const char *prop_name, double value) {
   setup_element(S16_CAPS_STRING);
-  double value = 42.45;
   g_object_set(element, prop_name, value, NULL);
   double read_back = 0;
   g_object_get(element, prop_name, &read_back, NULL);
 
-  fail_unless(read_back == 42.45);
+  fail_unless(read_back == value);
+}
+
+static void test_bool_property(const char *prop_name) {
+  gboolean value, read_back;
+
+  setup_element(S16_CAPS_STRING);
+  value = FALSE;
+  g_object_set(element, prop_name, value, NULL);
+  read_back = TRUE;
+  g_object_get(element, prop_name, &read_back, NULL);
+  fail_unless(read_back == FALSE);
+
+
+  value = TRUE;
+  g_object_set(element, prop_name, value, NULL);
+  read_back = FALSE;
+  g_object_get(element, prop_name, &read_back, NULL);
+  fail_unless(read_back == TRUE);
 }
 
 GST_START_TEST(test_prop_color_background) { test_uint_property("color-background"); }
@@ -487,10 +504,10 @@ GST_END_TEST;
 GST_START_TEST(test_prop_scale_target) { test_int_property("scale_target"); }
 GST_END_TEST;
 
-GST_START_TEST(test_prop_font_size_header) { test_double_property("font_size_header"); }
+GST_START_TEST(test_prop_font_size_header) { test_double_property("font_size_header", 42.45); }
 GST_END_TEST;
 
-GST_START_TEST(test_prop_font_size_scale) { test_double_property("font_size_scale"); }
+GST_START_TEST(test_prop_font_size_scale) { test_double_property("font_size_scale", 42.45); }
 GST_END_TEST;
 
 GST_START_TEST(test_prop_measurement) {
@@ -513,6 +530,22 @@ GST_END_TEST;
 
 GST_START_TEST(test_prop_timebase) { test_uint_property("timebase"); }
 GST_END_TEST;
+
+GST_START_TEST(test_short_term_gauge) { test_bool_property("short_term_gauge"); }
+GST_END_TEST;
+
+GST_START_TEST(test_momentary_gauge) { test_bool_property("momentary_gauge"); }
+GST_END_TEST;
+
+GST_START_TEST(test_peak_gauge) { test_bool_property("peak_gauge"); }
+GST_END_TEST;
+
+GST_START_TEST(test_peak_gauge_lower_limit) { test_double_property("peak_gauge_lower_limit", -25.75); }
+GST_END_TEST;
+
+GST_START_TEST(test_peak_gauge_upper_limi) { test_double_property("peak_gauge_upper_limit", -25.75); }
+GST_END_TEST;
+
 
 static Suite *element_suite(void) {
   Suite *s = suite_create("ebur128graph");
@@ -545,20 +578,31 @@ static Suite *element_suite(void) {
   tcase_add_test(tc_properties, test_prop_color_scale_lines);
   tcase_add_test(tc_properties, test_prop_color_header);
   tcase_add_test(tc_properties, test_prop_color_graph);
+
   tcase_add_test(tc_properties, test_prop_color_too_loud);
   tcase_add_test(tc_properties, test_prop_color_loudness_ok);
   tcase_add_test(tc_properties, test_prop_color_not_loud_enough);
+
   tcase_add_test(tc_properties, test_prop_gutter);
   tcase_add_test(tc_properties, test_prop_scale_w);
   tcase_add_test(tc_properties, test_prop_gauge_w);
+
   tcase_add_test(tc_properties, test_prop_scale_from);
   tcase_add_test(tc_properties, test_prop_scale_to);
   tcase_add_test(tc_properties, test_prop_scale_mode);
   tcase_add_test(tc_properties, test_prop_scale_target);
+
   tcase_add_test(tc_properties, test_prop_font_size_header);
   tcase_add_test(tc_properties, test_prop_font_size_scale);
+
   tcase_add_test(tc_properties, test_prop_measurement);
   tcase_add_test(tc_properties, test_prop_timebase);
+
+  tcase_add_test(tc_properties, test_short_term_gauge);
+  tcase_add_test(tc_properties, test_momentary_gauge);
+  tcase_add_test(tc_properties, test_peak_gauge);
+  tcase_add_test(tc_properties, test_peak_gauge_lower_limit);
+  tcase_add_test(tc_properties, test_peak_gauge_upper_limi);
 
   TCase *tc_buffer_size = tcase_create("buffer_size");
   suite_add_tcase(s, tc_buffer_size);
