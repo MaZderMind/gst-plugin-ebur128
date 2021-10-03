@@ -339,7 +339,6 @@ static void gst_ebur128graph_render_db_gauge(GstEbur128Graph *graph, cairo_t *ct
   for (guint channel_index = 0; channel_index < num_channels; channel_index++) {
     // in dbTP from -Inf to -0.0 dbTP and a little bit further
     gdouble measurement = measurements[channel_index];
-    GST_INFO("measurement: %f", measurement);
     gdouble linearized = linearize_db(measurement);
     double height = linearized * position->h;
 
